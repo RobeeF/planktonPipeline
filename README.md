@@ -1,6 +1,6 @@
 # planktonPipeline
 
-![Synechococcus_pic](Synechococcus.jpeg)
+![Synechococcus_pic](Synechococcus.jpg)
 
 1- Download the planktonPipeline folder
 2- Place the Cytoclus data (pulse and listmodes files) in the folder of your choice (data_source) and chose a destination folder (data_destination).
