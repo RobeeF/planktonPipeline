@@ -10,14 +10,15 @@ from sklearn.cluster import KMeans
 import pandas as pd 
 import numpy as np
 import os 
-from collections import Counter
-
-files_loc = 'C:/Users/robin/Documents/Documents_importants/scolarité/These/pipeline/data/features'
-os.chdir(files_loc)
-
 
 def least_permut_error(true_encoded_label, pred_encoded_label):
-    ''' Try every encoding for the predictions to determine the least possible error'''
+    ''' Try every encoding for the predictions to determine the least possible error
+    true_encoded_label (array-like): The encoded manual labels 
+    pred_encoded_label (array-like) : The encoded labels determined by the algorithm
+    Example: (to add):
+    ---------------------------------------------------------------------------------------
+    returns (float, array-like): The error rate commited on the dataset and the rightly encoded label predictions
+    '''
     min_error = np.inf
     nb_labels = len(set(true_encoded_label))
     n  = len(true_encoded_label)
@@ -32,36 +33,47 @@ def least_permut_error(true_encoded_label, pred_encoded_label):
             min_error = error
     return min_error, right_encoded_preds
 
-files_title = [f for f in os.listdir('.') if os.path.isfile(f)]
 
-df = pd.DataFrame()
+def particle_clustering(files_dir, clus_method = 'k-means'):
+    files_title = [f for f in os.listdir(files_dir)]
+    df = pd.DataFrame()
+    error_rates = {}
+    preds_labels = {}
+    
+    for title in files_title:
+        print(title)
+        
+        df = pd.read_csv(files_dir + '/' + title)
+        date = df['date'][0]
+        
+        df.set_index(['Particle ID', 'date'], inplace = True)
+        df = df.dropna(how = 'any')
+        # train_test_split
+        X = df.iloc[:, :-1]
+        Y = df.iloc[:, -1]
+        
+        X.columns
+        X.iloc[:,0]
+        
+        # Label Encoding
+        le = LabelEncoder()
+        le.fit(list(set(Y)))
+        Y_num = le.transform(Y)
+        
+        true_clus_nb = len(set(Y))
+        
+        # Kmeans fit 
+        if clus_method == 'k-means':
+            kmeans = KMeans(n_clusters=true_clus_nb, random_state=0).fit(X) # Fit with the right number of clusters
+            error_rate, preds_num = least_permut_error(Y_num, kmeans.labels_)
+            y_pred_label = le.inverse_transform(preds_num)
+            
+            error_rates[date] = error_rate
+            preds_labels[date] = y_pred_label
 
-for title in files_title:
-    df = df.append(pd.read_csv(title))
-    break
+        else:
+            raise RuntimeError("The requested method is not implemented yet.")
+    return error_rates, preds_labels
 
-df.set_index(['Particle ID', 'date'], inplace = True)
-df = df.dropna(how = 'any')
-# train_test_split
-X = df.iloc[:, :-1]
-Y = df.iloc[:, -1]
-
-X.columns
-X.iloc[:,0]
-
-# Label Encoding
-le = LabelEncoder()
-le.fit(list(set(Y)))
-Y_num = le.transform(Y)
-
-true_clus_nb = len(set(Y))
-
-# Kmeans fit 
-kmeans = KMeans(n_clusters=true_clus_nb, random_state=0).fit(X) # Fit with the right number of clusters
-error_rate, preds_num = least_permut_error(Y_num, kmeans.labels_)
-print("K-MEANS error is ", error_rate)
-
-preds_labels = le.inverse_transform(preds_num)
-count = Counter(preds_labels)
-
-# DEC ? 
+    
+    
