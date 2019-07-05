@@ -48,14 +48,11 @@ def particle_clustering(files_dir, clus_method = 'k-means'):
         
         df.set_index(['Particle ID', 'date'], inplace = True)
         df = df.dropna(how = 'any')
-        # train_test_split
+
         X = df.iloc[:, :-1]
         Y = df.iloc[:, -1]
         
-        X.columns
-        X.iloc[:,0]
-        
-        # Label Encoding
+        # Label Encoding: Turns the labels into numbers
         le = LabelEncoder()
         le.fit(list(set(Y)))
         Y_num = le.transform(Y)
