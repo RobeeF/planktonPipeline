@@ -35,6 +35,12 @@ def least_permut_error(true_encoded_label, pred_encoded_label):
 
 
 def particle_clustering(files_dir, clus_method = 'k-means'):
+    ''' Perform a clustering algorithm on the formated features files
+    files_dir (str):
+    clus_method (str): The clustering algorithm used  
+    --------------------------------------------------------------------
+    returns (dicts): The error rate for each file and the clusters found 
+    '''
     files_title = [f for f in os.listdir(files_dir)]
     df = pd.DataFrame()
     error_rates = {}
