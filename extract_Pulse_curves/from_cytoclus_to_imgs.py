@@ -128,11 +128,6 @@ def extract_imgs(data_source, data_destination, flr_num = 6, max_cc_instance_per
                     plt.close()
                 count += 1
                 
-            
-            # Sanity check 
-            #if (len(noise) + len_pulse_data != len(df)):
-                #raise ValueError("It seems that some data have been lost during extraction")
-                
         # Free useless memory
         del(df)
         del(noise)

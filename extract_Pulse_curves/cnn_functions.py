@@ -39,7 +39,7 @@ def partition_title_list(list_in, tronc = 0, is_test_set = False):
     return files_partition
 
     
-def imgs_train_test_valid_split(root_dir, balanced = False):
+def imgs_train_test_valid_split(root_dir, balanced = False, is_test_set = False):
     ''' Split the curves contained in the <all> subdirectory of the <root_directory> into 3 folders: train, test and validation folders
     For the moment, I sample the same number of curves for each class (equal to the lowest umber of curves available)
     root_dir (str): The path to the folder containing the 4 folders: all, train, test and validation set (If everithing is ok root_directory is the 'curves' directory)
@@ -56,11 +56,12 @@ def imgs_train_test_valid_split(root_dir, balanced = False):
         min_nb_curves = 0 #np.inf
         
     for ctype in curves_types:
+        print(ctype)
         cluster_classes = [f for f in os.listdir(root_dir + '/all/' + ctype)]
         for cclass in cluster_classes:
             curves_files = [f for f in os.listdir(root_dir + '/all/' + ctype + '/' + cclass)]
 
-            files_partition = partition_title_list(curves_files, min_nb_curves)
+            files_partition = partition_title_list(curves_files, min_nb_curves, is_test_set)
             for folder, files in files_partition.items():
                 for file in files:
                     if file != 'None': 
