@@ -36,7 +36,7 @@ def extract_features(data_source, data_destination, flr_num = 6):
     listmode_regex = "_([a-zA-Z0-9 ]+)_Listmode.csv"
     
     # Extract the timestamps of extractions and the labelled of identified clusters
-    dates = set([re.search(date_regex , f).group(1) for f in flr_title if  re.search("Pulse",f) and re.search("Default",f)])
+    dates = set([re.search(date_regex , f).group(1) for f in flr_title if  re.search("Listmode",f) and re.search("Default",f)])
     cluster_classes = list(set([re.search(listmode_regex, cc).group(1) for cc in listmode_titles_clus]))
     cluster_classes += ['noise']
     

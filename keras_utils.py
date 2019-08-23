@@ -8,7 +8,6 @@ Created on Mon Jul  1 18:03:04 2019
 from keras.layers import Input, Dense, Conv1D, Concatenate, GlobalAveragePooling1D, Dropout, MaxPooling1D, LSTM, Flatten
 from keras.models import Model
 from keras import optimizers
-from keras.applications.imagenet_utils import preprocess_input
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -183,7 +182,7 @@ def lstm_model(X, y):
                   optimizer=optimizers.Adam(lr=0.01), metrics=['acc'])
     return model
 
-def conv_model(X, y): # Overfit en 1 epoch
+def conv_model(X, y):
     ''' Create a Convolutional layers based model
     X (ndarray): The features
     y (ndarray): The labels 
@@ -213,6 +212,92 @@ def conv_model(X, y): # Overfit en 1 epoch
     model.compile(loss='categorical_crossentropy',
                   optimizer='adam', metrics=['acc'])
     return model
+
+#=================================================================================================================#
+# Image identifications Utils 
+#=================================================================================================================#
+
+def img_cnn(X, y):
+    ''' Create a Convolutional layers based model for image classification
+    X (ndarray): The features
+    y (ndarray): The labels 
+    ---------------------------------------------------------
+    returns (Keras Model): The compiled model 
+    '''
+    N_CLASSES = y.shape[1]
+    
+    # input: a batch of images
+    sequence_input = Input(shape=(90, 130), dtype='float32')
+    
+    # A 1D convolution with 128 output channels
+    x = Conv1D(128, 5, activation='relu')(sequence_input)
+    # MaxPool divides the length of the sequence by 5
+    x = MaxPooling1D(5)(x)
+    # A 1D convolution with 64 output channels
+    x = Conv1D(64, 5, activation='relu')(x)
+    # MaxPool divides the length of the sequence by 5
+    x = MaxPooling1D(5)(x)
+    x = Flatten()(x)
+    
+    predictions = Dense(N_CLASSES, activation='softmax')(x)
+    
+    model = Model(sequence_input, predictions)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam', metrics=['acc'])
+    return model
+
+
+#=================================================================================================================#
+# Image and FCM values network utils
+#=================================================================================================================#
+ # Model not tested
+def mixed_network(pulse_values, img, y, dp = 0.2):
+    ''' Create a Mixed type Neural Net Model with dropout
+    X (ndarray): The features
+    y (ndarray): The labels 
+    dp (float): The dropout rate of the model
+    ---------------------------------------------------------
+    returns (Keras Model): The compiled model 
+    '''
+    N_CLASSES = y.shape[1]
+    
+    # Handling the values stemming from the Pulse files
+    max_len = nb_curves = pulse_values.shape[1]
+    nb_curves = pulse_values.shape[2]
+    
+    pulse_values_input = Input(shape=(max_len, nb_curves), dtype='float32')
+    
+    average = GlobalAveragePooling1D()(pulse_values_input)
+    dense1 = Dense(64, activation='relu')(average)
+    drop1 = Dropout(dp)(dense1)
+    dense2 = Dense(32, activation='relu')(drop1)
+    drop2 = Dropout(dp)(dense2)
+    dense3 = Dense(32, activation='relu')(drop2)
+    drop3 = Dropout(dp)(dense3)
+    dense4 = Dense(16, activation='relu')(drop3)
+    drop4 = Dropout(dp)(dense4)
+    
+    # Handling the images (to check)
+    img_height = img.shape[1]
+    img_width = img.shape[2]
+    img_input = Input(shape=(img_height, img_width), dtype='float32')
+    
+    # A level of 5 convolutional layers
+    conv_1 = Conv1D(32, (5,), input_shape=(None, img_height, img_width), padding='same', activation = 'relu')(img_input)  
+        
+    # Concatenate: The parameters deriving from the 5 curves of concatenated
+    concat = Concatenate()([conv_1, drop4])
+    
+    dense1 = Dense(64, activation='relu')(concat)
+    avgpool1 = GlobalAveragePooling1D()(dense1)
+    predictions = Dense(N_CLASSES, activation='softmax')(avgpool1)
+    
+    model = Model(inputs=[pulse_values_input, img_input], outputs=predictions)
+    
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=optimizers.Adam(lr=0.01), metrics=['acc'])
+    return model
+
 
 #===============================================================================
 # General Keras plotting utility 
