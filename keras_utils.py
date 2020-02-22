@@ -114,7 +114,7 @@ def fit_gen(gens_dict, add_dim = False, ma = 1):
         
 
 #=================================================================================================================#
-# FFNN Utils 
+# Predictions from curves values utils 
 #=================================================================================================================#
 
 def ffnn_model(X, y, dp = 0.2):
@@ -147,6 +147,83 @@ def ffnn_model(X, y, dp = 0.2):
     model.compile(loss='categorical_crossentropy',
                   optimizer=optimizers.Adam(lr=0.01), metrics=['acc'])
     return model
+
+def ffnn_model_w_len(X, y, seq_length, dp = 0.2):
+    ''' Create a Feed Forward Neural Net Model with dropout
+    X (ndarray): The features
+    y (ndarray): The labels 
+    seq_length (1d-array): The original length of the sequence, which is highly informative
+    dp (float): The dropout rate of the model
+    ---------------------------------------------------------
+    returns (Keras Model): The compiled model 
+    '''
+    N_CLASSES = y.shape[1]
+    max_len = nb_curves = X.shape[1]
+    nb_curves = X.shape[2]
+    
+    sequence_input = Input(shape = (max_len, nb_curves), dtype='float32')
+    length_input = Input(shape = (1,1), dtype = 'float32')
+    
+    # Extract features from the 5 curves
+    average = GlobalAveragePooling1D()(sequence_input)
+    dense1 = Dense(64, activation='relu')(average)
+    drop1 = Dropout(dp)(dense1)
+    dense2 = Dense(32, activation='relu')(drop1)
+    drop2 = Dropout(dp)(dense2)
+    dense3 = Dense(32, activation='relu')(drop2)
+    drop3 = Dropout(dp)(dense3)
+    dense4 = Dense(16, activation='relu')(drop3)
+    drop4 = Dropout(dp)(dense4)
+
+    flat_len = Flatten()(length_input)
+    # Add the information about the sequence length
+    combined = Concatenate(axis = -1)([drop4, flat_len])
+    
+    predictions = Dense(N_CLASSES, activation='softmax')(combined)
+    
+    model = Model([sequence_input, length_input], predictions)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=optimizers.Adam(lr=0.01), metrics=['acc'])
+    return model
+
+def model13(X, y, dp = 0.2):
+    ''' Create a Feed Forward Neural Net Model with dropout
+    X (ndarray): The features
+    y (ndarray): The labels 
+    dp (float): The dropout rate of the model
+    ---------------------------------------------------------
+    returns (Keras Model): The compiled model 
+    '''
+    N_CLASSES = y.shape[1]
+    max_len = nb_curves = X.shape[1]
+    nb_curves = X.shape[2]
+    
+    sequence_input = Input(shape=(max_len, nb_curves), dtype='float32')
+    
+    # A 1D convolution with 128 output channels: Extract features from the curves
+    x = Conv1D(128, 5, activation='relu')(sequence_input)
+    x = Conv1D(64, 5, activation='relu')(x)
+    x = Conv1D(32, 5, activation='relu')(x)
+
+    # Average those features
+    average = GlobalAveragePooling1D()(x)
+    dense1 = Dense(64, activation='relu')(average)
+    drop1 = Dropout(dp)(dense1)
+    dense2 = Dense(32, activation='relu')(drop1)
+    drop2 = Dropout(dp)(dense2)
+    dense3 = Dense(32, activation='relu')(drop2)
+    drop3 = Dropout(dp)(dense3)
+    dense4 = Dense(16, activation='relu')(drop3)
+    drop4 = Dropout(dp)(dense4)
+
+    predictions = Dense(N_CLASSES, activation='softmax')(drop4)
+    
+    model = Model(sequence_input, predictions)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=optimizers.Adam(lr=0.01), metrics=['acc'])
+    return model
+
+
 
 def lstm_model(X, y):
     ''' Create a LSTM and Convolutional layers based model from O. Grisel Lecture-labs notebook

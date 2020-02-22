@@ -1,75 +1,64 @@
-import numpy as np
 import os
-
-
-from imblearn.under_sampling import RandomUnderSampler
+import numpy as np
 import re
 import pandas as pd
 
-from extract_Pulse_values.from_cytoclus_to_curves_values import extract_curves_values
+from imblearn.under_sampling import RandomUnderSampler
+from from_cytoclus_to_curves_values import extract_curves_values
 from sklearn.preprocessing import LabelEncoder
 from keras.utils.np_utils import to_categorical
+from scipy.interpolate import interp1d
+from sklearn.preprocessing import MinMaxScaler
 
-
-def get_encoder(path):
-    ''' Create the encoder object to encode and decode the names of the groups into integers
-    path (str): The path to where data are stored 
-    -------------------------------------------------------------------------
-    returns (label encoder): The label encoder object'''
     
-    # Encode the names of the clusters into integers
-    flr_titles = os.listdir('W:/Bureau/these/donnees_oceano/Newprocess_20190729_FLR25')
-    
-    if len(flr_titles) == 0:
-        raise RuntimeError('The data_destination folder that you specified is empty. You might consider reextracting the curves')
-        
-    pulse_titles_clus = [f for f in flr_titles if  re.search("Pulse",f) and not(re.search("Default",f))]
-    
-    pulse_regex = "_([a-zA-Z0-9 ]+)_Pulses.csv"  
-    cluster_classes = list(set([re.search(pulse_regex, cc).group(1) for cc in pulse_titles_clus \
-                                if not(re.search('Listmode', cc))]))
-    
-    cluster_classes.append('noise')
-    
-    cluster_classes = homogeneous_cluster_names(cluster_classes) # Get homogeneous groups names between samples
-    le = LabelEncoder()
-    le.fit(cluster_classes) 
-    
-    return le
-    
-def get_curves_values_data(data_source, data_destination, extract_curves = False):
+def get_curves_values_data(raw_source, clean_source, cluster_classes, extract_curves = False, pad = True, seed = None):
     ''' Generate a balanced dataset from the Pulse files 
-    data_source (str): The location of the Pulse files
-    data_destination (str): Where to write the formated Pulse files on disk
+    raw_source (str): The location of raw Pulse files (if extraction is needed)
+    clean_source (str): The location of extracted (and formatted) Pulse files on disk
+    cluster_classes (list of str): The classes used in the prediction task
     extract_curves (Bool): Whether to proceed to the extraction of the data (set it to True the first time you run the script)
+    pad (Bool): Whether to pad (resp. truncate) the short sequence (resp.the long sequence) or to interpolate them. Default is to pad
+    
     ------------------------------------------------------------------------------
     return (4 arrays): The dataset (X, y) the particle ids (pid) and the encoder of the groups names    
     '''
     if extract_curves:
-        extract_curves_values(data_source, data_destination, flr_num = 25) 
-
-    # Encode the names of the clusters into integers
-    le = get_encoder(data_source)  
-    cluster_classes = le.classes_
+        print('Extraction from raw data in progress')
+        extract_curves_values(raw_source, clean_source, flr_num = 25) 
+    
+    le = LabelEncoder()
+    le.fit(cluster_classes) 
     
     # Extracting the values
-    path = data_destination + '/curves_val'
+    path = clean_source 
     files = os.listdir(path)
     X = []
     y = []
     pid_list = []
+    seq_len_list = []
     
+    # Get the records of how many observations per class have already been included in the dataset
     nb_obs_to_extract_per_group = 100
     balancing_dict = dict(zip(cluster_classes, np.full(len(cluster_classes), nb_obs_to_extract_per_group)))
     
     for idx, file in enumerate(files):
         print('File:', idx + 1, '/', len(files), '(', file, ')')
         df = pd.read_csv(path + '/' + file)
-    
-        X_file, y_file, pid_list_file = data_preprocessing(df, balancing_dict, 120)
+
+	# Add arg in prototype
+	#if spe_flr_extract_fft:
+		#flr_num = re.search('(?:flr|FLR)([0-9]){2}').group(1) 
+		#if flr_num <= 7:   	
+			#df = df[(df['cluster'] != 'cryptophyte') & (df['cluster'] != 'nanoeucaryote') & (df['cluster'] != 'microphytoplancton')]
+		#if flr_num >= 8:
+			#df = df[(df['cluster'] != 'picoeucaryote') & (df['cluster'] != 'prochlorococcus') & (df['cluster'] != 'synechococcus')]
+	
+        X_file, seq_len_file, y_file, pid_list_file = data_preprocessing(df, balancing_dict, 120, pad = pad, seed = seed)
+
         X.append(X_file)
         y.append(y_file)
         pid_list.append(pid_list_file)
+        seq_len_list.append(seq_len_file)
         
         # Defining the groups to sample in priority in the next sample: Those which have less observations
         balancing_dict = pd.Series(np.concatenate(y)).value_counts().to_dict()
@@ -82,12 +71,14 @@ def get_curves_values_data(data_source, data_destination, extract_curves = False
     y = le.transform(y)
     y =  to_categorical(y)
     pid_list = np.concatenate(pid_list)
-    
-    assert len(X) == len(y) == len(pid_list)
+    seq_len_list = np.concatenate(seq_len_list)
         
-    return X, y, pid_list, le    
-    
+    # Sanity check:
+    assert len(X) == len(y) == len(pid_list) == len(seq_len_list)
+        
+    return X, seq_len_list, y, pid_list, le
 
+    
 def custom_pad_sequences(sequences, maxlen=None, dim=5, dtype='float32',
     padding='pre', truncating='pre', value=0.):
     ''' Override keras method to allow multiple feature dimensions (adapted from Stack Overflow discussions).
@@ -123,11 +114,30 @@ def custom_pad_sequences(sequences, maxlen=None, dim=5, dtype='float32',
             x[idx, :, -trunc.shape[1]:] = trunc
         else:
             raise ValueError("Padding type '%s' not understood" % padding)
-    return x
+            
+    return np.stack(x)
 
 
+def interp_sequences(sequences, max_len):
+    ''' Interpolate sequences in order to reduce their length to max_len
+        sequences (ndarray): The sequences to interpolate
+        maxlen (int): The maximum length of the sequence: shorter sequences will be padded with <value>, longer sequences will be truncated 
+        -------------------------------------------------------------------
+        returns (ndarray): The interpolated sequences
+    '''
 
-def data_preprocessing(df, balancing_dict, max_len = None, seed = None):
+    interp_obs = []
+    # Looping is dirty... Padding then interpolating and de-padding might be better
+    for idx, s in enumerate(sequences): 
+        original_len = s.shape[1]
+        f = interp1d(np.arange(original_len), s, 'quadratic', axis = 1)
+        interp_seq = np.apply_along_axis(f, 0, np.linspace(0, original_len -1, num = max_len))
+        interp_obs.append(interp_seq)
+    
+    return np.stack(interp_obs) 
+
+
+def data_preprocessing(df, balancing_dict, max_len = None, pad = False, seed = None):
     ''' Add paddings to Pulse sequences and rebalance the dataset 
     df (pandas DataFrame): The data container
     balancing_dict (dict): A dict that contains the desired quantities to extract for each group in order to obtain a balanced dataset
@@ -144,7 +154,7 @@ def data_preprocessing(df, balancing_dict, max_len = None, seed = None):
     # Deleting non existing keys and adapting to the data in place
     balancing_dict  = {k: min(balancing_dict[k], clus_value_count[k]) for k in clus_value_count.keys()}
     
-    # If the group that have less observations is not represented in this dataset: sample 10 observations of the other groups
+    # If the group that have less observations is not represented in this dataset: sample 40 observations of the other groups
     if np.sum(list(balancing_dict.values())) == 0:
         balancing_dict = {k: min(40, clus_value_count[k]) for k in clus_value_count.keys()}
             
@@ -155,32 +165,39 @@ def data_preprocessing(df, balancing_dict, max_len = None, seed = None):
     df_resampled = df.set_index('Particle ID').loc[pid_resampled.flatten()]
     
     # Reformatting the values
-    obs_list = []
-    pid_list = []
-    y_list = []
+    obs_list = [] # The 5 curves
+    pid_list = [] # The Particle ids
+    y_list = [] # The class (e.g. 0 = prochlorocchoccus, 1= ...)
+    seq_len_list = [] # The original length of the sequence
+    
     for pid, obs in df_resampled.groupby('Particle ID'):
+        # Sanity check: only one group for each particle
+        assert(len(set(obs['cluster'])) == 1) 
+
         obs_list.append(obs.iloc[:,:5].values.T)
+        seq_len_list.append(len(obs))
         pid_list.append(pid)
-        assert(len(set(obs['cluster'])) == 1) # Sanity check: only one group for each particle
         y_list.append(list(set(obs['cluster']))[0])
     
     # Defining a fixed length for all the sequence: 0s are added for shorter sequences and longer sequences are truncated
-    sequence_len = [obs.shape[1] for obs in obs_list]
     if max_len == None:
-        max_len = int(np.percentile(sequence_len, 75))
+        max_len = int(np.percentile(seq_len_list, 75))
     
-    obs_list = np.stack(custom_pad_sequences(obs_list, max_len))
+    if pad:
+        obs_list = custom_pad_sequences(obs_list, max_len)
+    else:
+        obs_list = interp_sequences(obs_list, max_len)
     
     X = np.transpose(obs_list, (0, 2, 1))
     
-    return X, y_list, pid_list
+    return X, seq_len_list, y_list, pid_list 
 
 def homogeneous_cluster_names(array):
     ''' Make homogeneous the names of the groups coming from the different Pulse files
     array (list, numpy 1D array or dataframe): The container in which the names have to be changed
     -----------------------------------------------------------------------------------------------
     returns (array): The array with the name changed and the original shape  
-        '''
+    '''
     if type(array) == pd.core.frame.DataFrame:
         array['cluster'] = array.cluster.str.replace('coccolithophorideae like','nanoeucaryote')
         array['cluster'] = array.cluster.str.replace('PicoHIGHFLR','picoeucaryotes')
@@ -196,3 +213,31 @@ def homogeneous_cluster_names(array):
         array = list(set(array))
                 
     return array
+
+def scaler(X):
+    ''' Scale the data. For the moment only minmax scaling is implemented'''
+    X_mms = []
+
+    # load data
+    # create scaler
+    scaler = MinMaxScaler()
+    # fit and transform in one step
+    for obs in X:
+        normalized = scaler.fit_transform(obs)
+        X_mms.append(normalized)
+    
+    X_mms = np.stack(X_mms)
+    return X_mms
+
+
+def extract_features_from_nn(dataset, pre_model):
+    ''' Extract and flatten the output of a Neural Network
+    dataset ((nb_obs,curve_length, nb_curves) array): The interpolated and scaled data
+    pre_model (Keras model): The model without his head
+    ---------------------------------------------------------------------
+    returns ((nb_obs,nb_features) array): The features extracted from the NN
+    '''
+     
+    features = pre_model.predict(dataset, batch_size=32)
+    features_flatten = features.reshape((features.shape[0], -1))
+    return features_flatten
