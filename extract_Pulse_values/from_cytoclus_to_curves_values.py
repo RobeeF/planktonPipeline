@@ -2,18 +2,29 @@ import pandas as pd
 import os 
 import re
 import numpy as np
+import fastparquet as fp
 
 
-def extract_curves_values(data_source, data_destination, flr_num = 6):
+def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extract_FLR = False):
     ''' Create 5 curves per particle in the files in the data_source repository. 
     The curves data are placed in data_destination. This function works for the FUMSECK data
     data_source (str): The path to the original source of data
     data_features (str) : The path to write the data to
     flr_num (int): Either 6 or 25. Indicate whether the curves have to be generated from FLR6 or FLR25 files
+    spe_extract_FLR (bool): Whether to extract only synecchocchus from FLR5
     ---------------------------------------------------------------------------------------------
     returns (None): Write the labelled Pulse shapes on hard disk
     '''
     assert (flr_num == 6) or (flr_num == 25)
+    
+    nb_files_already_processed = 0
+    log_file = data_destination + "/pred_logs.txt" # Register where write the already predicted files
+    if not(os.path.isfile(log_file)):
+        open(data_destination + '/pred_logs.txt', 'w+').close()
+    else:
+        with open(data_destination + '/pred_logs.txt', 'r') as file: 
+            nb_files_already_processed = len(file.readlines())
+
     
     files_title = [f for f in os.listdir(data_source)]
     # Keep only the interesting csv files
@@ -29,29 +40,52 @@ def extract_curves_values(data_source, data_destination, flr_num = 6):
     dates = set([re.search(date_regex, f).group(1) for f in flr_title if  re.search("Pulse",f) and re.search("Default",f)])
     cluster_classes = list(set([re.search(pulse_regex, cc).group(1) for cc in pulse_titles_clus]))
     cluster_classes += ['noise']
-      
-    for date in dates: # For each sampling phase
-        #date = list(dates)[0]
+     
+    nb_acquisitions = len(dates)
+    for date in dates: # For each acquisition
+        print(nb_files_already_processed, '/', nb_acquisitions, "files have already been processed")
         print("Processing:", date)
+
+        ### Check if the acquisition has already been formatted
+        with open(log_file, "r") as file:
+            if date + '_FLR' + str(flr_num) in file.read(): 
+                print("Already formatted")
+                continue
+            
         pulse_data = pd.DataFrame()
         # Get the info about each particule and its cluster label
         date_datasets_titles = [t for t in pulse_titles_clus if re.search(date, t)]
         
         # For each file, i.e. for each functional group
         for title in date_datasets_titles:
-            print(title)
+            clus_name = re.search(pulse_regex, title).group(1) 
+
+            # Legacy
+            #if spe_extract_FLR:
+                # Always extract big particles because they are rare
+                #if (flr_num == 6) & (clus_name in ['cryptophytes', 'Nano1', 'Nano2', 'nanoeucaryotes', 'microphytoplancton', 'microphytoplanctons', 'coccolithophorideae like']):   	
+                    #continue
+                #if (flr_num == 25) & (clus_name in ['picoeucaryotes', 'synechococcus', 'Prochlorococcus', 'PicoHIGHFLR']):
+                    #continue
+                
+            #print(title)
             
             try:
                 df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64)
             except ValueError: # If the data are in European format ("," stands for decimals and not thousands)
-                df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
+                try:
+                    df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
+                except pd.errors.EmptyDataError:
+                    print('Empty dataset')
+                    continue
+                    
             df = df[df["Particle ID"] != 0] # Delete formatting zeros
                         
             # Add the date of the extraction
             df["date"] = date
             
             # Get the name of the cluster from the file name
-            clus_name = re.search(pulse_regex, title).group(1) 
+            #clus_name = re.search(pulse_regex, title).group(1) 
             df["cluster"] = clus_name
             
             df.set_index("Particle ID", inplace = True)
@@ -61,12 +95,17 @@ def extract_curves_values(data_source, data_destination, flr_num = 6):
         
         ## Extract info of noise particles from the default file
         title = [t for t in pulse_titles_default if re.search(date, t)][0] # Dirty
-        print(title)
+        #print(title)
         
         try:
             df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64)
         except ValueError: # If the data are in European format ("," stands for decimals and not thousands)
-            df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
+            try:
+                df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
+            except pd.errors.EmptyDataError:
+                print('Empty dataset')
+                continue
+        
         
         df["date"] = date
         df = df[df["Particle ID"] != 0] # Delete formatting zeros
@@ -80,8 +119,27 @@ def extract_curves_values(data_source, data_destination, flr_num = 6):
         clus_name = "noise"
         df["cluster"] = clus_name
     
-        pulse_data = pulse_data.append(df)        
+        pulse_data = pulse_data.append(df)
+
+        if spe_extract_FLR & (flr_num == 25): # The 'df['cluster'] in ... syntax would be cleaner'
+            prev_len = len(pulse_data)
+            #pulse_data = pulse_data[(df['cluster'] != 'picoeucaryotes') & (pulse_data['cluster'] != 'synechococcus') & (pulse_data['cluster'] != 'Prochlorococcus') & (pulse_data['cluster'] != 'PicoHIGHFLR')]
+            unwanted_fft = ['picoeucaryotes', 'synechococcus', 'Prochlorococcus', 'PicoHIGHFLR']
+            pulse_data = pulse_data[~pulse_data.cluster.isin(unwanted_fft)]
+            new_len = len(pulse_data)
+            print('Dropped', prev_len - new_len, 'lines')
+            
         pulse_data.to_csv(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.csv') # Store the data on hard disk
+        #fp.write(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.parq', df, compression='SNAPPY')
+
+    
+        # Mark that the file has been formatted
+        with open(log_file, "a") as file:
+            file.write(date + '_FLR' + str(flr_num) + '\n')
+            nb_files_already_processed += 1
+        print('------------------------------------------------------------------------------------')
+
+
         
 # Need to be refactored with the previous function
 def extract_Oscar(listmode_source, pulse_source, data_destination, flr_num = 5, is_untreated = True):
@@ -123,7 +181,7 @@ def extract_Oscar(listmode_source, pulse_source, data_destination, flr_num = 5, 
         with open(log_file, "r") as file:
             if date + '_FLR' + str(flr_num) in file.read(): 
                 print("Already formatted")
-                pass
+                continue
         
         #### If the file has not already been formatted
         listmode_label = pd.DataFrame()
@@ -187,3 +245,44 @@ def extract_Oscar(listmode_source, pulse_source, data_destination, flr_num = 5, 
         # Mark that the file has been formatted
         with open(log_file, "a") as file:
             file.write(date + '_FLR' + str(flr_num) + '\n')
+
+dest = 'FUMSECK_L2_fp'
+def csv_to_parquet(source, dest):
+    ''' Temporary function to convert all csv files into fastparquet files'''  
+    
+    nb_files_already_processed = 0
+    log_file = dest + "/pred_logs.txt" # Register where write the already predicted files
+    if not(os.path.isfile(log_file)):
+        open(dest + '/pred_logs.txt', 'w+').close()
+    else:
+        with open(dest + '/pred_logs.txt', 'r') as file: 
+            nb_files_already_processed = len(file.readlines())
+
+    files = os.listdir(source)
+    files = [f for f in files if re.search("Labelled",f) and not(re.search('lock', f))]  
+    
+    
+    nb_acquisitions = len(files)
+
+    for file in files:
+        print(nb_files_already_processed, '/', nb_acquisitions, "files have already been processed")
+        print("Processing:", file)
+
+        format_file_name = re.sub('\.csv', '', file)
+        
+        ### Check if the acquisition has already been formatted
+        with open(log_file, "r") as lfile:
+            if format_file_name in lfile.read(): 
+                print("Already formatted")
+                continue
+        
+        df = pd.read_csv(source + '/' + file, engine='c')
+        fp.write(dest + '/' + format_file_name + '.parq', df, compression='SNAPPY')
+        
+        # Mark that the file has been formatted
+        with open(log_file, "a") as lfile:
+            lfile.write(format_file_name + '\n')
+            nb_files_already_processed += 1
+        print('------------------------------------------------------------------------------------')
+        
+    return 1

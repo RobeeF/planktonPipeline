@@ -12,6 +12,8 @@ from keras import optimizers
 import matplotlib.pyplot as plt
 import numpy as np
 
+from keras import metrics
+
 
 #=================================================================================================================#
 # CNN Utils 
@@ -201,15 +203,13 @@ def model13(X, y, dp = 0.2):
     sequence_input = Input(shape=(max_len, nb_curves), dtype='float32')
     
     # A 1D convolution with 128 output channels: Extract features from the curves
-    x = Conv1D(128, 5, activation='relu')(sequence_input)
-    x = Conv1D(64, 5, activation='relu')(x)
+    x = Conv1D(64, 5, activation='relu')(sequence_input)
     x = Conv1D(32, 5, activation='relu')(x)
+    x = Conv1D(16, 5, activation='relu')(x)
 
     # Average those features
     average = GlobalAveragePooling1D()(x)
-    dense1 = Dense(64, activation='relu')(average)
-    drop1 = Dropout(dp)(dense1)
-    dense2 = Dense(32, activation='relu')(drop1)
+    dense2 = Dense(32, activation='relu')(average) # Does using 2*32 layers make sense ?
     drop2 = Dropout(dp)(dense2)
     dense3 = Dense(32, activation='relu')(drop2)
     drop3 = Dropout(dp)(dense3)
@@ -220,9 +220,38 @@ def model13(X, y, dp = 0.2):
     
     model = Model(sequence_input, predictions)
     model.compile(loss='categorical_crossentropy',
-                  optimizer=optimizers.Adam(lr=0.01), metrics=['acc'])
+                  optimizer=optimizers.Adam(lr=0.01), metrics=[metrics.categorical_accuracy])
     return model
 
+def model13_light(X, y, dp = 0.2):
+    ''' Create a Feed Forward Neural Net Model with dropout
+    X (ndarray): The features
+    y (ndarray): The labels 
+    dp (float): The dropout rate of the model
+    ---------------------------------------------------------
+    returns (Keras Model): The compiled model 
+    '''
+    N_CLASSES = y.shape[1]
+    max_len = nb_curves = X.shape[1]
+    nb_curves = X.shape[2]
+    
+    sequence_input = Input(shape=(max_len, nb_curves), dtype='float32')
+    
+    # A 1D convolution with 128 output channels: Extract features from the curves
+    x = Conv1D(32, 5, activation='relu')(sequence_input)
+    x = Conv1D(16, 5, activation='relu')(x)
+
+    # Average those features
+    average = GlobalAveragePooling1D()(x)
+    dense2 = Dense(32, activation='relu')(average)
+    drop2 = Dropout(dp)(dense2)
+
+    predictions = Dense(N_CLASSES, activation='softmax')(drop2)
+    
+    model = Model(sequence_input, predictions)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=optimizers.Adam(lr=0.01), metrics=[metrics.categorical_accuracy])
+    return model
 
 
 def lstm_model(X, y):
