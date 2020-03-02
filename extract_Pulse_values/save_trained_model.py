@@ -185,7 +185,7 @@ np.save('X_features', extracted_features)
 # Fresh new start with all FUMSECK Data
 ##############################################################################################
 from keras.losses import CategoricalCrossentropy as cc
-from sklearn.metrics import confusion_matrix,classification_report
+from sklearn.metrics import confusion_matrix, classification_report
 from time import time
 from keras.utils.np_utils import to_categorical
 
@@ -251,6 +251,7 @@ X_train = X_train[ids_rs.flatten()]
 y_train =  to_categorical(y_train, num_classes = len(cluster_classes))
 
 w = 1/ np.sum(y_valid, axis = 0)
+#w[5] = w[5] * 1.2 # Make the weight of picoeucaryotes rise
 w = np.where(w == np.inf, np.max(w) * 2 , w)
 w = w/ w.sum() # Not enough weight on picoeucaryote #4
 
@@ -303,25 +304,3 @@ print(confusion_matrix(true, preds))
 
 # Good model : Save model
 cffnn.save('LottyNet_FUMSECK')
-len(y_test)
-
-
-####### Test for confusion matrix
-import matplotlib.pyplot as plt
-lab_tab = pd.read_csv(source + '/train_test_nomenclature.csv').set_index('labels')['cluster'].to_dict()
-labels = cluster_classes
-cm = confusion_matrix([lab_tab[x] for x in true], [lab_tab[x] for x in preds], cluster_classes)
-cm = cm/cm.sum(axis = 1, keepdims = True)
-cm = np.where(np.isnan(cm), 0, cm)
-print(cm) 
-
-fig = plt.figure(figsize = (14,14)) 
-ax = fig.add_subplot(111) 
-cax = ax.matshow(cm) 
-plt.title('Confusion matrix of LottyNet_Full on a FLR6 file') 
-fig.colorbar(cax) 
-ax.set_xticklabels([''] + labels) 
-ax.set_yticklabels([''] + labels) 
-plt.xlabel('Predicted') 
-plt.ylabel('True') 
-plt.show()

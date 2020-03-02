@@ -7,7 +7,7 @@ Created on Fri Dec  6 13:17:25 2019
 
 import os
 import re
-os.chdir('C:/Users/Utilisateur/Documents/GitHub/planktonPipeline/extract_Pulse_values')
+os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values')
 from pred_functions import predict
 import pandas as pd
 from keras.models import load_model
@@ -18,20 +18,24 @@ from sklearn.model_selection import GridSearchCV
 
 
 # Model and nomenclature loading
-model = load_model('FUMSECK_trained')
-tn = pd.read_csv('train_nomenclature.csv')
+os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
+
+model = load_model('LottyNet_FUMSECK')
+tn = pd.read_csv('train_test_nomenclature.csv')
+tn.columns = ['Label', 'id']
 
 # Define where to look the data at and where to store preds
-os.chdir('Z:/CS-68-2015/SSLAMM')
-export_folder = "SSLAMM_L1/SSLAMM_DEFAULT_PULSES_PREDS"
+#os.chdir('Z:/CS-68-2015/SSLAMM')
+export_folder = "C:/Users/rfuchs/Documents/cyto_classif/SSLAMM/L2"
 export_files = os.listdir(export_folder)
 
-pulse_regex = "_Pulses.csv" 
+pulse_regex = "_Pulse" 
 files_to_pred = [file for file in export_files if re.search(pulse_regex, file)] # The files containing the data to predict
 
 # Create a log file in the destination folder: list of the already predicted files
-preds_store_folder = "SSLAMM_L1/SSLAMM_DEFAULT_PULSES_PREDS"  # Where to store the predictions
+preds_store_folder = "C:/Users/rfuchs/Documents/cyto_classif/SSLAMM/L3"  # Where to store the predictions
 log_path = preds_store_folder + "/pred_logs.txt" # Register where write the already predicted files
+
 if not(os.path.isfile(log_path)):
     open(preds_store_folder + '/pred_logs.txt', 'w+').close()
 
@@ -47,10 +51,10 @@ for file in files_to_pred:
     if not(is_already_pred): # If not, perform the prediction
         # Predict the values
         predict(path, preds_store_folder,  model, tn)
-        
+
         # Write in the logs that this file is already predicted
         with open(log_path, "a") as log_file:
-            log_file.write(file + '\n')
+            log_file.write(file + '/n')
         
 ##############################################################
 ##################### Local tests to delete ##################

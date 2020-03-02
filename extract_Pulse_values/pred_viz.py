@@ -10,7 +10,8 @@ import pandas as pd
 import numpy as np
 import os 
 from copy import deepcopy
-import re
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values')
 
@@ -62,27 +63,27 @@ len_distrib[len_distrib['Particle ID'] == 592.0]
 ###################################################################################################################
 # Visualize the predictions
 ###################################################################################################################
-from pred_functions import predict
+from pred_functions import predict, plot_2D
 from keras.models import load_model
 from time import time
 
 start = time()
 
-folder = 'C:/Users/rfuchs/Documents/cyto_classif'
-file = 'FUMSECK_L2_fp/Labelled_Pulse6_2019-05-06 10h09.parq'
+folder = 'C:/Users/rfuchs/Documents/cyto_classif/SSLAMM/L3'
+file = 'SSLAMM/L3/Labelled_Pulse6_2019-05-06 10h09.parq'
 
 
 date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
-pred_file = re.search(date_regex, file).group(1) + '.csv'
+pred_file = 'Pulse6_2019-09-18 14h35.csv'
 os.chdir(folder)
 
 # Load pre-trained model
-#LottyNet = load_model('LottyNet_FUMSECK') 
-#model = LottyNet
+LottyNet = load_model('LottyNet_FUMSECK') 
+model = LottyNet
 
 # Load nomenclature
-#tn = pd.read_csv('train_test_nomenclature.csv')
-#tn.columns = ['Label', 'id']
+tn = pd.read_csv('train_test_nomenclature.csv')
+tn.columns = ['Label', 'id']
 
 # Making formated predictions 
 source_path = folder + '/' + file
@@ -96,38 +97,51 @@ np.mean(preds['True FFT id'] == preds['Pred FFT id'])
 
 colors = ['#96ceb4', '#ffeead', '#ffcc5c', '#ff6f69', '#588c7e', '#f2e394', '#f2ae72', '#d96459']
 
-# True vs pred
+#####################
+# 2D plots
+#####################
 
-fig, (ax1, ax2) = plt.subplots(1,2, figsize=(12,6))
-for id_, label in enumerate(list(tn['Label'])):
-    obs = preds[preds['True FFT Label'] == label]
-    ax1.scatter(obs['Total FLO'], obs['Total FLR'], c = colors[id_], \
-            label= label)
-    ax1.legend(loc= 'lower right', shadow=True, fancybox=True, prop={'size':10})
-
-ax1.set_title('True : Total FLO vs Total FLR')
-ax1.set_xscale('log')
-ax1.set_yscale('log')
-ax1.set_xlim(1, 10**6)
-ax1.set_ylim(1, 10**6)
+plot_2D(preds, tn, 'Total FLO', 'Total FLR', loc = 'lower right') # FLO vs FLR
+plot_2D(preds, tn, 'Total FWS', 'Total FLR', loc = 'upper left')
+plot_2D(preds, tn, 'Total SWS', 'Total FLR', loc = 'upper left')
+plot_2D(preds, tn, 'Total SWS', 'Total FWS', loc = 'upper left')
 
 
-for id_, label in enumerate(list(tn['Label'])):
-    obs = preds[preds['Pred FFT Label'] == label]
-    ax2.scatter(obs['Total FLO'], obs['Total FLR'], c = colors[id_], \
-            label= label)
-    ax2.legend(loc= 'lower right', shadow=True, fancybox=True, prop={'size':10})
-ax2.set_title('Pred: Total FLO vs Total FLR')
-ax2.set_xscale('log')
-ax2.set_yscale('log')
-ax2.set_xlim(1, 10**6)
-ax2.set_ylim(1, 10**6)
+####################
+# Confusion matrix
+####################
 
-end = time()
-print(end - start)
+lab_tab = tn.set_index('id')['Label'].to_dict()
+cluster_classes = list(lab_tab.values())
+true = np.array(preds['True FFT id'])
+pred_values = np.array(preds['Pred FFT id'])
 
+preds['Pred FFT id'].value_counts()
 
-####################### Three 2D projections in a row ################################
+pred_values[np.isnan(true)]
+    
+    
+
+cm = confusion_matrix(preds['True FFT Label'], preds['Pred FFT Label'], cluster_classes)
+cm = cm/cm.sum(axis = 1, keepdims = True)
+cm = np.where(np.isnan(cm), 0, cm)
+print(cm) 
+
+fig = plt.figure(figsize = (16,16)) 
+ax = fig.add_subplot(111) 
+cax = ax.matshow(cm) 
+plt.title('Confusion matrix of LottyNet_Full on a FLR6 file') 
+fig.colorbar(cax) 
+ax.set_xticklabels([''] + labels) 
+ax.set_yticklabels([''] + labels) 
+plt.xlabel('Predicted') 
+plt.ylabel('True') 
+plt.show()
+
+##################################
+# Three 2D projections in a row 
+#################################
+
 fig, (ax1, ax2, ax3) = plt.subplots(1,3)
 fig.suptitle('2D cytograms')
 ax1.scatter(preds['Total FLO'], preds['Total FLR'], c = preds['FFT id'])

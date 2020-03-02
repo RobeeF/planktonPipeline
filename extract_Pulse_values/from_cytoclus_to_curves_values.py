@@ -28,7 +28,7 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
     
     files_title = [f for f in os.listdir(data_source)]
     # Keep only the interesting csv files
-    flr_title = [f for f in files_title if re.search("^FUMSECK-FLR" + str(flr_num),f) and re.search("csv",f) ]
+    flr_title = [f for f in files_title if re.search("FLR" + str(flr_num),f) and re.search("csv",f) ]
 
     pulse_titles_clus = [f for f in flr_title if  re.search("Pulse",f) and not(re.search("Default",f))]
     pulse_titles_default = [f for f in flr_title if  re.search("Pulse",f) and re.search("Default",f)]
@@ -42,6 +42,10 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
     cluster_classes += ['noise']
      
     nb_acquisitions = len(dates)
+    
+    if nb_acquisitions == 0:
+        print('No file found...')
+    
     for date in dates: # For each acquisition
         print(nb_files_already_processed, '/', nb_acquisitions, "files have already been processed")
         print("Processing:", date)
@@ -58,6 +62,7 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
         
         # For each file, i.e. for each functional group
         for title in date_datasets_titles:
+            print(title)
             clus_name = re.search(pulse_regex, title).group(1) 
 
             # Legacy
@@ -121,16 +126,15 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
     
         pulse_data = pulse_data.append(df)
 
-        if spe_extract_FLR & (flr_num == 25): # The 'df['cluster'] in ... syntax would be cleaner'
+        if spe_extract_FLR & (flr_num == 25): 
             prev_len = len(pulse_data)
-            #pulse_data = pulse_data[(df['cluster'] != 'picoeucaryotes') & (pulse_data['cluster'] != 'synechococcus') & (pulse_data['cluster'] != 'Prochlorococcus') & (pulse_data['cluster'] != 'PicoHIGHFLR')]
             unwanted_fft = ['picoeucaryotes', 'synechococcus', 'Prochlorococcus', 'PicoHIGHFLR']
             pulse_data = pulse_data[~pulse_data.cluster.isin(unwanted_fft)]
             new_len = len(pulse_data)
             print('Dropped', prev_len - new_len, 'lines')
             
-        pulse_data.to_csv(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.csv') # Store the data on hard disk
-        #fp.write(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.parq', df, compression='SNAPPY')
+        #pulse_data.to_csv(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.csv') # Store the data on hard disk
+        fp.write(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.parq', pulse_data, compression='SNAPPY')
 
     
         # Mark that the file has been formatted
@@ -246,7 +250,6 @@ def extract_Oscar(listmode_source, pulse_source, data_destination, flr_num = 5, 
         with open(log_file, "a") as file:
             file.write(date + '_FLR' + str(flr_num) + '\n')
 
-dest = 'FUMSECK_L2_fp'
 def csv_to_parquet(source, dest):
     ''' Temporary function to convert all csv files into fastparquet files'''  
     

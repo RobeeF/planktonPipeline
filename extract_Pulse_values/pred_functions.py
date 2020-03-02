@@ -12,8 +12,7 @@ import scipy.integrate as it
 from ffnn_functions import scaler
 import fastparquet as fp
 import re
-
-from ffnn_functions import data_preprocessing
+import matplotlib.pyplot as plt
 
 def predict(source_path, dest_folder, model, tn, scale = False, pad = False):
     ''' Predict the class of unlabelled data with a pre-trained model and store them in a folder
@@ -40,7 +39,11 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False):
     total_curv_list = []
     true_labels = []
     
-    df = df.set_index('Particle ID')
+    try:
+        df = df.set_index('Particle ID')
+    except:
+        print('Particle ID was not found in column names')
+        
     for pid, obs in df.groupby('Particle ID'):
         pid_list.append(pid)
         obs_list.append(obs.iloc[:,:5].values.T) 
@@ -83,3 +86,37 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False):
     date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
     file_name = re.search(date_regex, source_path).group(1)
     formatted_preds.to_csv(dest_folder + '/' + file_name + '.csv', index = False)
+
+
+def plot_2D(preds, tn, q1, q2, loc = 'upper left'):
+    ''' Plot 2D cytograms as for manual classification '''
+    
+    colors = ['#96ceb4', '#ffeead', '#ffcc5c', '#ff6f69', '#588c7e', '#f2e394', '#f2ae72', '#d96459']
+
+    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(12,6))
+    for id_, label in enumerate(list(tn['Label'])):
+        obs = preds[preds['True FFT Label'] == label]
+        ax1.scatter(obs[q1], obs[q2], c = colors[id_], label= label)
+        ax1.legend(loc= loc, shadow=True, fancybox=True, prop={'size':8})
+    
+    ax1.set_title('True :' +  q1 + ' vs ' + q2)
+    ax1.set_xscale('log')
+    ax1.set_yscale('log')
+    ax1.set_xlabel(q1)
+    ax1.set_ylabel(q2)
+    ax1.set_xlim(1, 10**6)
+    ax1.set_ylim(1, 10**6)
+    
+    
+    for id_, label in enumerate(list(tn['Label'])):
+        obs = preds[preds['Pred FFT Label'] == label]
+        ax2.scatter(obs[q1], obs[q2], c = colors[id_], label= label)
+        ax2.legend(loc= loc, shadow=True, fancybox=True, prop={'size':8})
+    ax2.set_title('Pred :' +  q1 + ' vs ' + q2)
+    ax2.set_xscale('log')
+    ax2.set_yscale('log')
+    ax2.set_xlabel(q1)
+    ax2.set_ylabel(q2)
+    ax2.set_xlim(1, 10**6)
+    ax2.set_ylim(1, 10**6)
+    
