@@ -14,7 +14,7 @@ import fastparquet as fp
 import re
 import matplotlib.pyplot as plt
 
-def predict(source_path, dest_folder, model, tn, scale = False, pad = False):
+def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_ground_truth = True):
     ''' Predict the class of unlabelled data with a pre-trained model and store them in a folder
     source_path (str): The path to the file containing the formatted unlabeled data
     dest_folder (str): The folder to store the predictions
@@ -67,20 +67,32 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False):
         
     preds = np.argmax(model.predict(X), axis = 1)
     
-    true_labels = homogeneous_cluster_names(np.array(true_labels))
-    formatted_preds = pd.DataFrame({'Particle ID': pid, \
-                                    'Total FWS': total_fws_list, 'Total SWS': total_sws_list, \
-                                    'Total FLO': total_flo_list, 'Total FLR': total_flr_list, \
-                                    'Total CURV': total_curv_list, \
-                                    'True FFT id': None, 'True FFT Label': true_labels, \
-                                    'Pred FFT id': preds, 'Pred FFT Label': None}) 
     
+    if is_ground_truth:
+        true_labels = homogeneous_cluster_names(np.array(true_labels))
+        formatted_preds = pd.DataFrame({'Particle ID': pid, \
+                                        'Total FWS': total_fws_list, 'Total SWS': total_sws_list, \
+                                        'Total FLO': total_flo_list, 'Total FLR': total_flr_list, \
+                                        'Total CURV': total_curv_list, \
+                                        'True FFT id': None, 'True FFT Label': true_labels, \
+                                        'Pred FFT id': preds, 'Pred FFT Label': None}) 
+
+    else:
+        formatted_preds = pd.DataFrame({'Particle ID': pid, \
+                                        'Total FWS': total_fws_list, 'Total SWS': total_sws_list, \
+                                        'Total FLO': total_flo_list, 'Total FLR': total_flr_list, \
+                                        'Total CURV': total_curv_list, \
+                                        'Pred FFT id': preds, 'Pred FFT Label': None})         
     # Add string labels
     tn_dict = tn.set_index('id')['Label'].to_dict()
-    
+
     for id_, label in tn_dict.items():
-        formatted_preds.loc[formatted_preds['True FFT Label'] == label, 'True FFT id'] = id_
         formatted_preds.loc[formatted_preds['Pred FFT id'] == id_, 'Pred FFT Label'] = label
+
+        if is_ground_truth:
+            formatted_preds.loc[formatted_preds['True FFT Label'] == label, 'True FFT id'] = id_
+                
+
 
     # Store the predictions on hard disk 
     date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"

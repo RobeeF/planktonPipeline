@@ -2,11 +2,13 @@ import pandas as pd
 import os 
 import re
 import numpy as np
+import snappy
 import fastparquet as fp
 
+### Serious need for refactorisation here..
 
 def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extract_FLR = False):
-    ''' Create 5 curves per particle in the files in the data_source repository. 
+    ''' Create 5 labelled curves per particle in the files in the data_source repository. 
     The curves data are placed in data_destination. This function works for the FUMSECK data
     data_source (str): The path to the original source of data
     data_features (str) : The path to write the data to
@@ -97,7 +99,6 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
 
             pulse_data = pulse_data.append(df)
 
-        
         ## Extract info of noise particles from the default file
         title = [t for t in pulse_titles_default if re.search(date, t)][0] # Dirty
         #print(title)
@@ -111,9 +112,9 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
                 print('Empty dataset')
                 continue
         
-        
+        df = df[df.values.sum(axis=1) != 0] # Delete formatting zeros
         df["date"] = date
-        df = df[df["Particle ID"] != 0] # Delete formatting zeros
+        #df = df[df["Particle ID"] != 0] # Used to delete particle 0
         
         existing_indices = pulse_data[pulse_data['date']==date].index
 
@@ -142,6 +143,77 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
             file.write(date + '_FLR' + str(flr_num) + '\n')
             nb_files_already_processed += 1
         print('------------------------------------------------------------------------------------')
+
+
+def format_for_pred(data_source, data_destination, flr_num = 6):
+    ''' Create 5 labelled curves per particle in the files in the data_source repository. 
+    The curves data are placed in data_destination. This function works for the FUMSECK data
+    data_source (str): The path to the original source of data
+    data_features (str) : The path to write the data to
+    flr_num (int): Either 6 or 25. Indicate whether the curves have to be generated from FLR6 or FLR25 files
+    spe_extract_FLR (bool): Whether to extract only synecchocchus from FLR5
+    ---------------------------------------------------------------------------------------------
+    returns (None): Write the labelled Pulse shapes on hard disk
+    '''
+    assert (flr_num == 6) or (flr_num == 25)
+    
+    nb_files_already_processed = 0
+    log_file = data_destination + "/pred_logs.txt" # Register where write the already predicted files
+    if not(os.path.isfile(log_file)):
+        open(data_destination + '/pred_logs.txt', 'w+').close()
+    else:
+        with open(data_destination + '/pred_logs.txt', 'r') as file: 
+            nb_files_already_processed = len(file.readlines())
+
+    
+    files_title = [f for f in os.listdir(data_source)]
+    # Keep only the interesting csv files
+    flr_title = [f for f in files_title if re.search("FLR" + str(flr_num),f) and re.search("csv",f) ]
+
+    # Defining the regex
+    date_regex = "FLR" + str(flr_num) + " (20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}h[0-9]{2})_[A-Za-z ()]+"
+    dates = set([re.search(date_regex, f).group(1) for f in flr_title if  re.search("Pulse",f)])
+     
+    nb_acquisitions = len(dates)
+    
+    if nb_acquisitions == 0:
+        raise RuntimeError('No file found...')
+    
+    for date in dates: # For each acquisition
+        print(nb_files_already_processed, '/', nb_acquisitions, "files have already been processed")
+        print("Processing:", date)
+
+        ### Check if the acquisition has already been formatted
+        with open(log_file, "r") as file:
+            if date + '_FLR' + str(flr_num) in file.read(): 
+                print("Already formatted")
+                continue
+            
+        ## Extract info of noise particles from the default file
+        title = [t for t in flr_title if re.search(date, t)][0] # Dirty
+        
+        try:
+            df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64)
+        except ValueError: # If the data are in European format ("," stands for decimals and not thousands)
+            try:
+                df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
+            except pd.errors.EmptyDataError:
+                print('Empty dataset')
+                continue
+        
+        df = df[df.values.sum(axis=1) != 0]        
+        df["date"] = date
+        
+        fp.write(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.parq', df, compression='SNAPPY')
+
+    
+        # Mark that the file has been formatted
+        with open(log_file, "a") as file:
+            file.write(date + '_FLR' + str(flr_num) + '\n')
+            nb_files_already_processed += 1
+        print('------------------------------------------------------------------------------------')
+
+
 
 
         
