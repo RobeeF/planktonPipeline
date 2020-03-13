@@ -52,7 +52,8 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
         total_flo_list.append(it.trapz(obs['FL Orange'].astype(float)))
         total_flr_list.append(it.trapz(obs['FL Red'].astype(float)))
         total_curv_list.append(it.trapz(obs['Curvature'].astype(float)))
-        true_labels.append(np.unique(obs['cluster'])[0])
+        if is_ground_truth:
+            true_labels.append(np.unique(obs['cluster'])[0])
         
         
     # Defining a fixed length for all the sequence: 0s are added for shorter sequences and longer sequences are truncated    
@@ -70,7 +71,7 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
     
     if is_ground_truth:
         true_labels = homogeneous_cluster_names(np.array(true_labels))
-        formatted_preds = pd.DataFrame({'Particle ID': pid, \
+        formatted_preds = pd.DataFrame({'Particle ID': pid_list, \
                                         'Total FWS': total_fws_list, 'Total SWS': total_sws_list, \
                                         'Total FLO': total_flo_list, 'Total FLR': total_flr_list, \
                                         'Total CURV': total_curv_list, \
@@ -78,7 +79,7 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
                                         'Pred FFT id': preds, 'Pred FFT Label': None}) 
 
     else:
-        formatted_preds = pd.DataFrame({'Particle ID': pid, \
+        formatted_preds = pd.DataFrame({'Particle ID': pid_list, \
                                         'Total FWS': total_fws_list, 'Total SWS': total_sws_list, \
                                         'Total FLO': total_flo_list, 'Total FLR': total_flr_list, \
                                         'Total CURV': total_curv_list, \

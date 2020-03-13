@@ -32,7 +32,7 @@ extract_curves_values(data_source, data_destination, flr_num = flr_num, spe_extr
 ##################################################################################################
 
 data_source = 'C:/Users/rfuchs/Documents/SSLAMMP2-defaultpulseshapes'
-data_destination = 'C:/Users/rfuchs/Documents/SSLAMMP2_L2'
+data_destination = 'C:/Users/rfuchs/Documents/SSLAMM_L1'
 flr_num = 25
 
 start = time()
