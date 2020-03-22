@@ -30,7 +30,7 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
     
     files_title = [f for f in os.listdir(data_source)]
     # Keep only the interesting csv files
-    flr_title = [f for f in files_title if re.search("FLR" + str(flr_num),f) and re.search("csv",f) ]
+    flr_title = [f for f in files_title if re.search("FLR" + str(flr_num) + ' ',f) and re.search("csv",f) ]
 
     pulse_titles_clus = [f for f in flr_title if  re.search("Pulse",f) and not(re.search("Default",f))]
     pulse_titles_default = [f for f in flr_title if  re.search("Pulse",f) and re.search("Default",f)]
@@ -168,7 +168,7 @@ def format_for_pred(data_source, data_destination, flr_num = 6):
     
     files_title = [f for f in os.listdir(data_source)]
     # Keep only the interesting csv files
-    flr_title = [f for f in files_title if re.search("FLR" + str(flr_num),f) and re.search("csv",f) ]
+    flr_title = [f for f in files_title if re.search("FLR" + str(flr_num) + ' ',f) and re.search("csv",f) ]
 
     # Defining the regex
     date_regex = "FLR" + str(flr_num) + " (20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}h[0-9]{2})_[A-Za-z ()]+"

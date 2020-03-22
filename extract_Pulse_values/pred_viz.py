@@ -138,36 +138,23 @@ plt.xlabel('Predicted')
 plt.ylabel('True') 
 plt.show()
 
-##################################
-# Three 2D projections in a row 
-#################################
+#############################################################################################
+# Plot predicted time series 
+#############################################################################################
+ts = pd.read_csv('C:/Users/rfuchs/Documents/02_to_03_2020.csv')
+ts = ts.set_index('date')
 
-fig, (ax1, ax2, ax3) = plt.subplots(1,3)
-fig.suptitle('2D cytograms')
-ax1.scatter(preds['Total FLO'], preds['Total FLR'], c = preds['FFT id'])
-ax1.set_title('Total FLO vs Total FLR')
-
-ax2.scatter(preds['Total FWS'], preds['Total FLR'], c = preds['FFT id'])
-ax2.set_title('Total FWS vs Total FLR')
-
-ax3.scatter(preds['Total SWS'], preds['Total FLR'], c = preds['FFT id'])
-ax2.set_title('Total SWS vs Total FLR')
-
-fig.tight_layout()
-fig.show()
-
-#plt.scatter(preds['Total FLO'], preds['Total FLR'], c = preds['Particle_class_num'])
-#plt.scatter(preds['Total FWS'], preds['Total FLR'], c = preds['Particle_class_num'])
-#plt.scatter(preds['Total SWS'], preds['Total FLR'], c = preds['Particle_class_num'])
+for col in ts.columns:
+    plt.plot(ts[col], label = col)
+    plt.show()
+    
+cols_plot = ts.columns
+axes = ts[cols_plot].plot( alpha=0.5, linestyle='-', figsize=(11, 9), subplots=True)
+for ax in axes:
+    ax.set_ylabel('Count')
+    
+help(ts[cols_plot].plot)
 
 
 
 
-
-a = np.array(pd.DataFrame(true_labels, columns = ['Pred FFT Label']).merge(tn)['Pred FFT id'])
-b = np.argmax(y_test, axis = 1)
-
-print((a - b)[:1000])
-
-true_labels[0]
-np.argmax(y_test[0])

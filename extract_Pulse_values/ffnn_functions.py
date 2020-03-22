@@ -218,7 +218,6 @@ def custom_pad_sequences(sequences, maxlen = None, dim = 5, dtype='float32',
             
     return np.stack(x)
 
-
 def interp_sequences(sequences, max_len):
     ''' Interpolate sequences in order to reduce their length to max_len
         sequences (ndarray): The sequences to interpolate

@@ -31,14 +31,16 @@ extract_curves_values(data_source, data_destination, flr_num = flr_num, spe_extr
 # ENDOUME
 ##################################################################################################
 
-data_source = 'C:/Users/rfuchs/Documents/SSLAMMP2-defaultpulseshapes'
-data_destination = 'C:/Users/rfuchs/Documents/SSLAMM_L1'
+######################################## P2 ##############################################
+data_source = 'C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMMP2-defaultpulseshapes'
+data_destination = 'C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMM_L1'
 flr_num = 25
 
-start = time()
-extract_curves_values(data_source, data_destination, flr_num = flr_num, spe_extract_FLR = True)
-end = time()
-print('Time to extract', end - start)
-# 6 s to extract 
+format_for_pred(data_source, data_destination, flr_num = flr_num)
+
+##################################### P1 #################################################
+data_source = 'C:/Users/rfuchs/Documents/SSLAMM_P2/SSLAMM-P1-pulseshape_2'
+data_destination = 'C:/Users/rfuchs/Documents/SSLAMM_P2/SSLAMM_L1'
+flr_num = 25
 
 format_for_pred(data_source, data_destination, flr_num = flr_num)
