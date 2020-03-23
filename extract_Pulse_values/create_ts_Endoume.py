@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 
 # Fetch the files 
-pred_folder =  "C:/Users/rfuchs/Documents/SSLAMM_L2"
+pred_folder =  "C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMM_L2"
 pred_files = os.listdir(pred_folder)
 
 pulse_regex = "Pulse" 
@@ -22,15 +22,14 @@ files = [file for file in pred_files if re.search(pulse_regex, file)] # The file
 phyto_ts = pd.DataFrame(columns = ['picoeucaryote', 'synechococcus', 'nanoeucaryote', 'cryptophyte', \
        'noise', 'airbubble', 'microphytoplancton', 'prochlorococcus', 'date'])
 
-# Need for a log file ?
 for file in files:
     path = pred_folder + '/' + file
-    pd.read_csv(path).columns
+    
     cl_count = pd.read_csv(path, usecols = ['Pred FFT Label'])['Pred FFT Label'].value_counts()
     cl_count = pd.DataFrame(cl_count).transpose()
     flr_num = int(re.search(flr_regex, file).group(1))
     
-    # Have to throw away small/big phytoplancton corresponding to FLR25 or FLR26
+    # Keep only "big" phyotplancton from FLR25 and "small" one from FLR6 
     if flr_num == 25:
         for clus_name in ['picoeucaryote', 'synechococcus', 'prochlorococcus']:
             if clus_name in cl_count.columns:
@@ -43,7 +42,7 @@ for file in files:
     else:
         raise RuntimeError('Unkonwn flr number', flr_num)
     
-    # Have to round it to the closest hour    
+    # The timestamp is rounded to the closest 20 minutes    
     date = re.search(date_regex, file).group(1)
     date = pd.to_datetime(date, format='%Y-%m-%d %Hh%M', errors='ignore')
     mins = date.minute
@@ -70,9 +69,32 @@ for file in files:
     cl_count['date'] = date 
     phyto_ts = phyto_ts.append(cl_count)
 
-#####################################################################    
-# Final serie with representative count
-#####################################################################
+
+##########################################################################    
+# Final serie with representative count for the first part of the serie
+##########################################################################
+idx_pbs = pd.DataFrame(phyto_ts.groupby('date').size())
+idx_pbs = idx_pbs[idx_pbs[0] == 1].index
+
+# Few date reformating
+phyto_ts = phyto_ts.replace(pd.to_datetime('2019-09-18 14:20:00'),pd.to_datetime('2019-09-18 14:40:00'))
+phyto_ts = phyto_ts.replace(pd.to_datetime('2019-11-09 07:00:00'),pd.to_datetime('2019-11-09 07:20:00'))
+phyto_ts = phyto_ts.replace(pd.to_datetime('2019-11-14 09:40:00'),pd.to_datetime('2019-11-14 10:00:00'))
+phyto_ts = phyto_ts.replace(pd.to_datetime('2019-11-21 14:00:00'),pd.to_datetime('2019-11-21 14:20:00'))
+phyto_ts = phyto_ts.replace(pd.to_datetime('2019-12-10 14:40:00'),pd.to_datetime('2019-12-10 15:00:00'))
+
+phyto_rpz_ts = phyto_ts.groupby('date').sum()
+phyto_rpz_ts = phyto_rpz_ts.reset_index()
+
+# For those which have not both a FLR6 and a FLR25 file, replace the missing values by NaN
+for idx in idx_pbs:
+    phyto_rpz_ts[phyto_rpz_ts['date'] == idx] = phyto_rpz_ts[phyto_rpz_ts['date'] == idx].replace(0, np.nan)
+
+phyto_rpz_ts.to_csv('C:/Users/rfuchs/Documents/09_to_12_2019.csv', index = False)
+
+##########################################################################    
+# Final serie with representative count for the second part of the serie
+##########################################################################
     
 idx_pbs = pd.DataFrame(phyto_ts.groupby('date').size())
 idx_pbs = idx_pbs[idx_pbs[0] == 1].index
@@ -85,7 +107,7 @@ phyto_rpz_ts = phyto_ts.groupby('date').sum()
 
 phyto_rpz_ts = phyto_rpz_ts.reset_index()
 
-# For those which have not a FLR6 and a FLR25 replace the missing values by NaN
+# For those which have not both a FLR6 and a FLR25 file, replace the missing values by NaN
 for idx in idx_pbs:
     phyto_rpz_ts[phyto_rpz_ts['date'] == idx] = phyto_rpz_ts[phyto_rpz_ts['date'] == idx].replace(0, np.nan)
 

@@ -141,20 +141,46 @@ plt.show()
 #############################################################################################
 # Plot predicted time series 
 #############################################################################################
-ts = pd.read_csv('C:/Users/rfuchs/Documents/02_to_03_2020.csv')
+from ffnn_functions import homogeneous_cluster_names
+
+ts = pd.read_csv('C:/Users/rfuchs/Documents/09_to_12_2019.csv')
+ts['date'] =  pd.to_datetime(ts['date'], format='%Y-%m-%d %H:%M:%S')
 ts = ts.set_index('date')
 
-for col in ts.columns:
-    plt.plot(ts[col], label = col)
-    plt.show()
-    
 cols_plot = ts.columns
-axes = ts[cols_plot].plot( alpha=0.5, linestyle='-', figsize=(11, 9), subplots=True)
+axes = ts[cols_plot].plot(alpha=0.5, linestyle='-', figsize=(11, 9), subplots=True)
 for ax in axes:
     ax.set_ylabel('Count')
     
-help(ts[cols_plot].plot)
 
+# True picoeuc on period one
+true_ts = pd.read_csv('C:/Users/rfuchs/Documents/09_to_12_2019_true.csv', sep = ';', engine = 'python')
+true_ts = true_ts[['Date','count', 'set']]
+true_ts['Date'] =  pd.to_datetime(true_ts['Date'], format='%d/%m/%Y %H:%M:%S')
+true_ts.columns = ['Date','count', 'cluster']
+true_ts = homogeneous_cluster_names(true_ts)
+true_ts['cluster'] = true_ts['cluster'].replace('default (all)', 'noise')
+
+true_ts = true_ts.set_index('Date')
+
+
+for cluster_name in ts.columns:
+    if cluster_name in set(true_ts['cluster']):
+        # Picoeuk comparison: (HighFLR are neglected)
+        true_ts_clus = pd.DataFrame(true_ts[true_ts['cluster'] == cluster_name]['count'])
+        true_ts_clus.columns = ['true_count']
+        pred_ts_clus = pd.DataFrame(ts[cluster_name])
+        pred_ts_clus.columns = ['pred_count']
+        
+        true_ts_clus.index = true_ts_clus.index.floor('H')
+        pred_ts_clus.index = pred_ts_clus.index.floor('H')
+        
+        all_clus = true_ts_clus.join(pred_ts_clus)
+        
+        all_clus.plot(alpha=0.5, figsize=(17, 9), marker='.', title = cluster_name)
+        plt.savefig('C:/Users/rfuchs/Desktop/pred_P1/' + cluster_name + '.png')
+    else:
+        print(cluster_name, 'is not in true_ts pred')
 
 
 
