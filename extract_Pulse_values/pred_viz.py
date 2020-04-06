@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 import os 
 from copy import deepcopy
-import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values')
@@ -138,6 +137,69 @@ plt.xlabel('Predicted')
 plt.ylabel('True') 
 plt.show()
 
+
+###################################################################################################################
+# Randomly pick some Endoume predictions and plot true vs pred 
+###################################################################################################################
+import re
+import fastparquet as fp
+from ffnn_functions import homogeneous_cluster_names
+
+
+true_folder = 'C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMM_True_L1'
+pred_folder = 'C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMM_L2'
+graph_folder = 'C:/Users/rfuchs/Documents/SSLAMM_P1/graphs_true_pred/1_23_03_20'
+
+nb_plots = 10
+true_files = [f for f in os.listdir(true_folder) if re.search('parq', f)]
+picked_true_files = np.random.choice(true_files, nb_plots, replace = False)
+
+date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
+titles = [re.sub('Pulse', 'FLR', re.search(date_regex, f).group(0)) for f in picked_true_files]
+picked_pred_files = [re.search(date_regex, f).group(0) + '.csv' for f in picked_true_files]
+
+acc = np.zeros(nb_plots)
+
+for i, file in enumerate(picked_true_files):
+    pfile = fp.ParquetFile(true_folder + '/' + file)
+    true = pfile.to_pandas(columns=['Particle ID','cluster'])
+    true = true.reset_index().drop_duplicates()
+    true = homogeneous_cluster_names(true)
+    true.columns = ['Particle ID', 'True FFT Label']
+    
+    pred = pd.read_csv(pred_folder + '/' + picked_pred_files[i])
+    
+    if len(pred) != len(true):
+        raise RuntimeError('Problem on', file)
+    
+    true_pred = pd.merge(true, pred, on = 'Particle ID')
+    acc[i] = np.mean(true_pred['True FFT Label'] == true_pred['Pred FFT Label'])
+    print(acc[i])
+    plot_2D(true_pred, tn, 'Total FWS', 'Total FLR', loc = 'upper left', title = graph_folder + '/' + titles[i])
+
+
+np.mean(acc)
+q1 = 'Total FWS'
+q2 = 'Total FLR'
+#fp.to_pandas
+#pd.read()
+#true_pred = pd.merge([true, preds, on = 'Particle id')
+#np.mean(true_pred['True FFT id'] == true_pred['Pred FFT id'])
+#plot_2D(preds, tn, 'Total FWS', 'Total FLR', loc = 'upper left') # Add savefig ? 
+plt.savefig('cocuou')
+
+
+L1_pred_folder = 'C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMM_L1'
+pd.read_csv(L1_pred_folder + "/" + file)
+
+pfile2 = fp.ParquetFile(true_folder + '/' + file)
+a = pfile2.to_pandas()
+    
+a.loc[88.0]
+true.loc[88.0]
+set(a.index) - set(true.index)
+set(true.index) - set(a.index)
+
 #############################################################################################
 # Plot predicted time series 
 #############################################################################################
@@ -153,7 +215,7 @@ for ax in axes:
     ax.set_ylabel('Count')
     
 
-# True picoeuc on period one
+# Formatting True time series for P1
 true_ts = pd.read_csv('C:/Users/rfuchs/Documents/09_to_12_2019_true.csv', sep = ';', engine = 'python')
 true_ts = true_ts[['Date','count', 'set']]
 true_ts['Date'] =  pd.to_datetime(true_ts['Date'], format='%d/%m/%Y %H:%M:%S')
@@ -182,5 +244,4 @@ for cluster_name in ts.columns:
     else:
         print(cluster_name, 'is not in true_ts pred')
 
-
-
+ts['microphytoplancton'].plot()

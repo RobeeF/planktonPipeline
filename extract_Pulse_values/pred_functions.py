@@ -106,15 +106,15 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
         print('File was empty.')
 
 
-def plot_2D(preds, tn, q1, q2, loc = 'upper left'):
+def plot_2D(preds, tn, q1, q2, loc = 'upper left', title = None):
     ''' Plot 2D cytograms as for manual classification '''
     
-    colors = ['#96ceb4', '#ffeead', '#ffcc5c', '#ff6f69', '#588c7e', '#f2e394', '#f2ae72', '#d96459']
+    colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue']
 
-    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(12,6))
+    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(16,4))
     for id_, label in enumerate(list(tn['Label'])):
         obs = preds[preds['True FFT Label'] == label]
-        ax1.scatter(obs[q1], obs[q2], c = colors[id_], label= label)
+        ax1.scatter(obs[q1], obs[q2], c = colors[id_], label= label, s=1)
         ax1.legend(loc= loc, shadow=True, fancybox=True, prop={'size':8})
     
     ax1.set_title('True :' +  q1 + ' vs ' + q2)
@@ -128,7 +128,7 @@ def plot_2D(preds, tn, q1, q2, loc = 'upper left'):
     
     for id_, label in enumerate(list(tn['Label'])):
         obs = preds[preds['Pred FFT Label'] == label]
-        ax2.scatter(obs[q1], obs[q2], c = colors[id_], label= label)
+        ax2.scatter(obs[q1], obs[q2], c = colors[id_], label= label, alpha=1, s=1)
         ax2.legend(loc= loc, shadow=True, fancybox=True, prop={'size':8})
     ax2.set_title('Pred :' +  q1 + ' vs ' + q2)
     ax2.set_xscale('log')
@@ -138,3 +138,5 @@ def plot_2D(preds, tn, q1, q2, loc = 'upper left'):
     ax2.set_xlim(1, 10**6)
     ax2.set_ylim(1, 10**6)
     
+    if title != None:
+        plt.savefig(title)
