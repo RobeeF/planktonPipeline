@@ -2,7 +2,6 @@ import pandas as pd
 import os 
 import re
 import numpy as np
-import snappy
 import fastparquet as fp
 
 ### Serious need for refactorisation here..
@@ -114,7 +113,6 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
         
         df = df[df.values.sum(axis=1) != 0] # Delete formatting zeros
         df["date"] = date
-        #df = df[df["Particle ID"] != 0] # Used to delete particle 0
         
         existing_indices = pulse_data[pulse_data['date']==date].index
 
@@ -321,43 +319,3 @@ def extract_Oscar(listmode_source, pulse_source, data_destination, flr_num = 5, 
         # Mark that the file has been formatted
         with open(log_file, "a") as file:
             file.write(date + '_FLR' + str(flr_num) + '\n')
-
-def csv_to_parquet(source, dest):
-    ''' Temporary function to convert all csv files into fastparquet files'''  
-    
-    nb_files_already_processed = 0
-    log_file = dest + "/pred_logs.txt" # Register where write the already predicted files
-    if not(os.path.isfile(log_file)):
-        open(dest + '/pred_logs.txt', 'w+').close()
-    else:
-        with open(dest + '/pred_logs.txt', 'r') as file: 
-            nb_files_already_processed = len(file.readlines())
-
-    files = os.listdir(source)
-    files = [f for f in files if re.search("Labelled",f) and not(re.search('lock', f))]  
-    
-    
-    nb_acquisitions = len(files)
-
-    for file in files:
-        print(nb_files_already_processed, '/', nb_acquisitions, "files have already been processed")
-        print("Processing:", file)
-
-        format_file_name = re.sub('\.csv', '', file)
-        
-        ### Check if the acquisition has already been formatted
-        with open(log_file, "r") as lfile:
-            if format_file_name in lfile.read(): 
-                print("Already formatted")
-                continue
-        
-        df = pd.read_csv(source + '/' + file, engine='c')
-        fp.write(dest + '/' + format_file_name + '.parq', df, compression='SNAPPY')
-        
-        # Mark that the file has been formatted
-        with open(log_file, "a") as lfile:
-            lfile.write(format_file_name + '\n')
-            nb_files_already_processed += 1
-        print('------------------------------------------------------------------------------------')
-        
-    return 1

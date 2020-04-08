@@ -12,13 +12,12 @@ from sklearn.preprocessing import MinMaxScaler
 from copy import deepcopy
 
 
-def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, prop = [0.80, 0.1, 0.1], pad = False, seed = None):
+def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, prop = [0.80, 0.1, 0.1], seed = None):
     ''' Generate a train balanced dataset and a test set with all observations 
     source (str): The location of extracted (and formatted) Pulse files on disk
     cluster_classes (list of str): The classes used in the prediction task
     max_nb_files_extract (int): Number of file to extract data from in source (this number is then splitted between train/test/valid according to prop)
     prop (list of float): the proportion of train/valid/test files
-    pad (Bool): Whether to pad (resp. truncate) the short sequence (resp.the long sequence) or to interpolate them. Default is to pad
     seed (all type): The seed to use to generate random samples    
     ------------------------------------------------------------------------------------
     '''
@@ -73,20 +72,20 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
     print('Generating train set')
     X_train, seq_len_list_train, y_train, pid_list_train, file_name_train, le_train = gen_dataset(source, \
                                 cluster_classes, train_files, le, nb_obs_to_extract_per_group = 100, \
-                                pad = False, to_balance = True, seed = None)
+                                 to_balance = True, seed = None)
 
 
     # Extract the valid dataset from full files
     print('Generating valid set')
     X_valid, seq_len_list_valid, y_valid, pid_list_valid, file_name_valid, le_valid = gen_dataset(source, \
                                 cluster_classes, valid_files, le, nb_obs_to_extract_per_group = 600, default_sampling_nb = 70,\
-                                pad = False, to_balance = False, to_undersample = True, seed = None)
+                                to_balance = False, to_undersample = True, seed = None)
     
     # Extract the test dataset from full files
     print('Generating test set')
     X_test, seq_len_list_test, y_test, pid_list_test, file_name_test, le_test = gen_dataset(source, \
                                 cluster_classes, test_files, le, nb_obs_to_extract_per_group = 100, \
-                                pad = False, to_balance = False, to_undersample = False, seed = None)
+                                to_balance = False, to_undersample = False, seed = None)
         
     
     # Write the nomenclature (Ex: Synnechochocus = 0, Prochlorrococus = 1 ...) used to generate the dataset     
@@ -106,7 +105,7 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
     
 
 def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extract_per_group = 100, default_sampling_nb = 40,\
-                       pad = False, to_balance = True, to_undersample = False, seed = None):
+                       to_balance = True, to_undersample = False, seed = None):
     ''' Generate a balanced dataset from the cleaned Pulse files 
     source (str): The location of extracted (and formatted) Pulse files on disk
     cluster_classes (list of str): The classes used in the prediction task
@@ -114,7 +113,6 @@ def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extrac
     le (LabelEncoder object): None if no label encoder is provided.
     nb_obs_to_extract_per_group: Number of cells to extract for each group in each file 
     default_sampling_nb (int): The minimum number of cells to extract from each file (used only if to balance is True)
-    pad (Bool): Whether to pad (resp. truncate) the short sequence (resp.the long sequence) or to interpolate them. Default is to pad
     seed (all type): The seed to use to generate random samples
     ------------------------------------------------------------------------------
     return (4 arrays): The dataset (X, y) the particle ids (pid) and the encoder of the groups names    
@@ -139,13 +137,16 @@ def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extrac
     
     # Get the records of how many observations per class have already been included in the dataset(ignored if to_balance = False)
     balancing_dict = dict(zip(cluster_classes, np.full(len(cluster_classes), nb_obs_to_extract_per_group)))
-    
+        
     for idx, file in enumerate(files):
         print('File:', idx + 1, '/', len(files), '(', file, ')')
         pfile = fp.ParquetFile(source + '/' + file)
         df = pfile.to_pandas()
         
-        X_file, seq_len_file, y_file, pid_list_file = data_preprocessing(df, balancing_dict, CURVES_DEFAULT_LEN, pad = pad, \
+        if not('Particle ID' in df.columns):
+            df = df.reset_index()
+        
+        X_file, seq_len_file, y_file, pid_list_file = data_preprocessing(df, balancing_dict, CURVES_DEFAULT_LEN,  \
                                                                     to_balance = to_balance, to_undersample = to_undersample, seed = seed)
 
         X.append(X_file)
@@ -180,54 +181,17 @@ def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extrac
     return X, seq_len_list, y, pid_list, file_name, le
 
     
-def custom_pad_sequences(sequences, maxlen = None, dim = 5, dtype='float32',
-                             padding='pre', truncating='pre', value=0.):
-    ''' Override keras method to allow multiple feature dimensions (adapted from Stack Overflow discussions).
-        sequences (ndarray): The sequences to pad/truncate
-        maxlen (int): The maximum length of the sequence: shorter sequences will be padded with <value>, longer sequences will be truncated 
-        dim (int): input feature dimension (number of features per timestep)
-        dtype (str): The type of the data
-        padding (either 'pre' or 'post'): Whether to pad at the beginning (pre) or at the end of the sequence (post)
-        padding (either 'pre' or 'post'): Whether to truncate at the beginning (pre) or at the end of the sequence (post)
-        value (float): The value used to pad the sequences
-        ------------------------------------------------------------------------------------------------------------------
-        returns ((nb of observations, dim, maxlen) array): The padded sequences
-
-    '''
-    lengths = [len(s) for s in sequences]
-
-    nb_samples = len(sequences)
-    if maxlen is None:
-        maxlen = np.max(lengths)
-    
-    x = (np.ones((nb_samples, dim, maxlen)) * value).astype(dtype)
-    for idx, s in enumerate(sequences):
-        if truncating == 'pre':
-            trunc = s[:, -maxlen:]
-        elif truncating == 'post':
-            trunc = s[:, :maxlen]
-        else:
-            raise ValueError("Truncating type '%s' not understood" % padding)
-
-        if padding == 'post':
-            x[idx, : , :trunc.shape[1]] = trunc
-        elif padding == 'pre':
-            x[idx, :, -trunc.shape[1]:] = trunc
-        else:
-            raise ValueError("Padding type '%s' not understood" % padding)
-            
-    return np.stack(x)
 
 def interp_sequences(sequences, max_len):
     ''' Interpolate sequences in order to reduce their length to max_len
         sequences (ndarray): The sequences to interpolate
-        maxlen (int): The maximum length of the sequence: shorter sequences will be padded with <value>, longer sequences will be truncated 
+        maxlen (int): The maximum length of the sequence: All sequences will be interpolated to match this length
         -------------------------------------------------------------------
         returns (ndarray): The interpolated sequences
     '''
 
     interp_obs = []
-    # Looping is dirty... Padding then interpolating and de-padding might be better
+    # Looping is dirty... But the sequences have different lengths...
     for idx, s in enumerate(sequences): 
         original_len = s.shape[1]
         f = interp1d(np.arange(original_len), s, 'quadratic', axis = 1)
@@ -237,12 +201,12 @@ def interp_sequences(sequences, max_len):
     return np.stack(interp_obs) 
 
 
-def data_preprocessing(df, balancing_dict = None, default_sampling_nb = 40, max_len = None, pad = False, \
+def data_preprocessing(df, balancing_dict = None, default_sampling_nb = 40, max_len = None,  \
                            to_balance = True, to_undersample = False, seed = None):
-    ''' Add paddings/interpolates Pulse sequences and rebalance the dataset 
+    ''' Interpolates Pulse sequences and rebalance the dataset 
     df (pandas DataFrame): The data container
     balancing_dict (dict): A dict that contains the desired quantities to extract for each group in order to obtain a balanced dataset. Only used if to_balance is True
-    maxlen (int): The maximum length of the sequence: shorter sequences will be padded with zeros, longer sequences will be truncated 
+    maxlen (int): The maximum length of the sequence: All sequences will be interpolated to match this length
     default_sampling_nb (int): The minimum number of cells to extract from each file
     to_balance (Bool): Whether to balance or not the dataset
     to_undersample (Bool): Whether to undersample the data even if it is not to obtain a balanced data_set. Used only if to_balance == False
@@ -269,7 +233,7 @@ def data_preprocessing(df, balancing_dict = None, default_sampling_nb = 40, max_
             balancing_dict = {k: min(default_sampling_nb, clus_value_count[k]) for k in clus_value_count.keys()}
                 
         # Undersampling to get a balanced dataset
-        rus = RandomUnderSampler(random_state = seed, ratio = balancing_dict)
+        rus = RandomUnderSampler(random_state = seed, sampling_strategy = balancing_dict)
             
         pid_resampled, y_resampled = rus.fit_sample(pid_cluster['Particle ID'].values.reshape(-1,1), pid_cluster['cluster'])
         df_resampled = df.set_index('Particle ID').loc[pid_resampled.flatten()]
@@ -306,11 +270,8 @@ def data_preprocessing(df, balancing_dict = None, default_sampling_nb = 40, max_
     if max_len == None:
         max_len = DEFAULT_MAX_LEN
     
-    # Defining a fixed length for all the sequence: 0s are added for shorter sequences and longer sequences are truncated   
-    if pad:
-        obs_list = custom_pad_sequences(obs_list, max_len)
-    else:
-        obs_list = interp_sequences(obs_list, max_len)
+
+    obs_list = interp_sequences(obs_list, max_len)
     
     X = np.transpose(obs_list, (0, 2, 1))
     
@@ -326,7 +287,9 @@ def homogeneous_cluster_names(array):
         array['cluster'] = array.cluster.str.replace('coccolithophorideae like','nanoeucaryote')
         array['cluster'] = array.cluster.str.replace('Nano1','nanoeucaryote')
         array['cluster'] = array.cluster.str.replace('Nano2','nanoeucaryote')
-        array['cluster'] = array.cluster.str.replace('PicoHIGHFLR','picoeucaryotes')
+        array['cluster'] = array.cluster.str.replace('picohighflr','picoeucaryote')
+        array['cluster'] = array.cluster.str.replace('picohighFLR','picoeucaryote')
+        array['cluster'] = array.cluster.str.replace('PicoHIGHFLR','picoeucaryote')
         array['cluster'] = array.cluster.str.replace('es$','e') # Put in the names in singular form
         array['cluster'] = array.cluster.str.lower()
 
@@ -336,10 +299,9 @@ def homogeneous_cluster_names(array):
         array = [re.sub('Nano1','nanoeucaryote', string) for string in array]
         array = [re.sub('Nano2','nanoeucaryote', string) for string in array]
         array = [re.sub('PicoHIGHFLR','picoeucaryotes', string) for string in array]
+        array = [re.sub('picohighflr','picoeucaryotes', string) for string in array]
         array = [re.sub('es$','e', string) for string in array]
         array = [string.lower() for string in array]
-
-        #array = list(set(array))
         array = list(array)
                 
     return array

@@ -9,90 +9,48 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import os 
-from copy import deepcopy
 from sklearn.metrics import confusion_matrix
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values')
 
-#################################################################################################################
-# Descriptive statistics
-#################################################################################################################
-
-# Load training data
+# Load nomenclature
 tn = pd.read_csv('train_test_nomenclature.csv')
 tn.columns = ['Particle_class', 'label']
 
-X = np.load('X.npy')
-y = np.load('y.npy')
-pid_list = np.load('pid_list.npy')
-seq_len_list = np.load('seq_len_list.npy')
-
-labels = np.argmax(y, axis = 1)
-
-# Compute the quantiles
-qs = np.quantile(seq_len_list, q = [0, 0.25, 0.5, 0.75, 1])
-
-q1_mask = (seq_len_list >= qs[0]) & (seq_len_list< qs[1])
-q2_mask = (seq_len_list >= qs[1]) & (seq_len_list<= qs[2])
-q3_mask = (seq_len_list > qs[2]) & (seq_len_list <= qs[3])
-q4_mask = (seq_len_list > qs[3]) & (seq_len_list<= qs[4])
-
-assert((q1_mask.sum() + q2_mask.sum() + q3_mask.sum() + q4_mask.sum()) == len(seq_len_list))
-
-seq_quant = deepcopy(seq_len_list)
-seq_quant[q1_mask] = 1
-seq_quant[q2_mask] = 2
-seq_quant[q3_mask] = 3
-seq_quant[q4_mask] = 4
-
-pd.crosstab(seq_quant, labels)
-
-len_distrib = pd.DataFrame({'Particle ID': pid_list, 'length': seq_len_list, 'q': seq_quant, 'label': labels})
-len_distrib = len_distrib.merge(tn)
-
-for label, group in len_distrib.groupby('Particle_class'):
-    print('Group number', label)
-    plt.hist(group['length'])
-    plt.show()
-
-len_distrib[len_distrib['Particle_class'] == 'cryptophyte']
-
-len_distrib[len_distrib['Particle ID'] == 592.0]
 
 ###################################################################################################################
-# Visualize the predictions
+# Visualize the predictions made on FUMSECK
 ###################################################################################################################
-from pred_functions import predict, plot_2D
+
+from pred_functions import predict
+from viz_functions import plot_2D
+
 from keras.models import load_model
 from time import time
 
 start = time()
 
-folder = 'C:/Users/rfuchs/Documents/cyto_classif/SSLAMM/L3'
-file = 'SSLAMM/L3/Labelled_Pulse6_2019-05-06 10h09.parq'
+folder = 'C:/Users/rfuchs/Documents/cyto_classif'
+file = 'FUMSECK_L2_fp/Labelled_Pulse6_2019-05-06 10h09.parq'
 
 
 date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
-pred_file = 'Pulse6_2019-09-18 14h35.csv'
+pred_file = 'Pulse6_2019-05-06 10h09.csv'
 os.chdir(folder)
 
 # Load pre-trained model
-LottyNet = load_model('LottyNet_FUMSECK') 
-model = LottyNet
-
-# Load nomenclature
-tn = pd.read_csv('train_test_nomenclature.csv')
-tn.columns = ['Label', 'id']
+LottyNet = load_model('C:/Users/rfuchs/Documents/cyto_classif/ENN_LottyNet_FUMSECK') 
 
 # Making formated predictions 
 source_path = folder + '/' + file
 dest_folder = folder
-predict(source_path, folder, LottyNet, tn, scale = False, pad = False)
+predict(source_path, folder, LottyNet, tn)
 
 # Getting those predictions
 preds = pd.read_csv(folder + '/' + pred_file)
 
 np.mean(preds['True FFT id'] == preds['Pred FFT id'])
+print(confusion_matrix(preds['True FFT id'] , preds['Pred FFT id']))
 
 colors = ['#96ceb4', '#ffeead', '#ffcc5c', '#ff6f69', '#588c7e', '#f2e394', '#f2ae72', '#d96459']
 
@@ -138,12 +96,193 @@ plt.ylabel('True')
 plt.show()
 
 
+#############################################################################################
+# Plot the training set : FUMSECK
+#############################################################################################
+
+from scipy.integrate import trapz
+from viz_functions import plot_2Dcyto
+
+X = np.load('C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L3/X_train610.npy')
+y = np.load('C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L3/y_train610.npy')
+
+X_trapz = trapz(X, axis = 1)
+X_trapz = pd.DataFrame(X_trapz, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
+
+y_label = y.argmax(1)
+#y_str_label = np.array([tn[tn['label'] == yi]['Particle_class'].values[0] for yi in y_label])
+
+
+colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue']
+# Uncomment to mask some of the categories
+#colors = ['black', 'white', 'white', 'white', 'white', 'white', 'white', 'white']
+
+
+q1 = 'FL Red'
+q2 = 'FL Orange'
+
+plot_2Dcyto(X_trapz, y_label, tn, q1, q2, colors)
+
+#============================================
+# Try with Undersampling
+#============================================
+
+from imblearn.under_sampling import NearMiss, EditedNearestNeighbours
+from collections import Counter
+  
+# ENN for cleaning data
+ratio_list = list(set(range(8)) - set([0,2,4]))
+enn = EditedNearestNeighbours(sampling_strategy = ratio_list)
+X_rs, y_rs = enn.fit_resample(X_trapz, y_label)
+
+ratio_dict = {}
+for i in range(8):
+    ratio_dict[i] = 400  
+
+nm1 = NearMiss(version = 1, sampling_strategy = ratio_dict)
+X_rs, y_rs = nm1.fit_resample(X_rs, y_rs)
+
+
+plot_2Dcyto(X_rs, y_rs, tn, q1, q2, colors)
+
+Counter(y_rs)
+
+
+# Near miss: Taille trop mais la Version 1 est la meilleure
+# Tomek taille pas assez dans le gras
+# ENN non plus mais a l'effet escompté ! (Meilleur que Tomek)
+# OSS vire carrément les pico et les synnecho oklm
+# NeighbourhoodCleaningRule
+
+
+#=====================================================
+# Outliers detection with kmeans
+#=====================================================
+from sklearn.neighbors import KNeighborsClassifier
+
+knn = KNeighborsClassifier(n_neighbors = 3)
+knn.fit(X_trapz, y_label)
+y_knn = knn.predict(X_trapz)
+
+
+plot_2Dcyto(X_trapz, y_knn, tn, q1, q2, colors)
+
+Counter(y_rs)
+len(y_rs)
+len(y_label)
+
+
+#############################################################################################
+# Undersampling a random acquisition
+#############################################################################################
+import fastparquet as fp
+from dataset_prepocessing import homogeneous_cluster_names, interp_sequences
+
+folder = 'C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L2_fp'
+
+pfile = fp.ParquetFile(folder + '/' + 'Labelled_Pulse6_2019-05-05 06h09.parq')
+true = pfile.to_pandas()
+
+true = homogeneous_cluster_names(true)
+true = true.set_index('Particle ID')
+grouped_df = true[['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature']].groupby('Particle ID')
+
+obs_list = [obs.values.T for pid, obs in grouped_df]
+obs_list = interp_sequences(obs_list, 120)
+X_true = trapz(obs_list, axis = 2)
+X_true = pd.DataFrame(X_true, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
+
+y_true = true.groupby('Particle ID')['cluster'].apply(np.unique)
+y_true = np.stack(y_true)[:,0]
+y_enc = np.array([list(tn[tn['Particle_class'] == yi]['label'])[0] for yi in y_true])
+
+ratio_list = list(set(range(8)) - set([0,2,4]))
+enn = EditedNearestNeighbours(sampling_strategy = ratio_list)
+X_rs, y_rs = enn.fit_resample(X_true, y_enc)
+
+
+plot_2Dcyto(X_rs, y_rs, tn, q1, q2, colors)
+
+
+Counter(y_true)
+1 - len(y_rs) / len(y_label)
+
+
+
+#############################################################################################
+# Plot the training set : Endoume 
+#############################################################################################
+
+from scipy.integrate import trapz
+from pred_functions import plot_2Dcyto
+
+X = np.load('C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L3/X_trainFLR6_SSLAMM.npy')
+y = np.load('C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L3/y_trainFLR6_SSLAMM.npy')
+
+X_trapz = trapz(X, axis = 1)
+X_trapz = pd.DataFrame(X_trapz, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
+
+y_label = y.argmax(1)
+
+q1 = 'FWS'
+q2 = 'FL Red'
+
+plot_2Dcyto(X_trapz, y_label, tn, q1, q2)
+
+# Test set
+X = np.load('C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L3/X_testFLR6_SSLAMM.npy')
+y = np.load('C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L3/y_testFLR6_SSLAMM.npy')
+
+X_trapz = trapz(X, axis = 1)
+X_trapz = pd.DataFrame(X_trapz, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
+
+y_label = y.argmax(1)
+
+q1 = 'FWS'
+q2 = 'FL Red'
+
+plot_2Dcyto(X_trapz, y_label, tn, q1, q2)
+
+
+
+
+#############################################################################################
+# Benchmarking CNN with kNN
+#############################################################################################
+# Cannot run like this !
+
+folder = 'C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L2_fp'
+
+pfile = fp.ParquetFile(folder + '/' + 'Labelled_Pulse6_2019-05-05 06h09.parq')
+true = pfile.to_pandas()
+
+true = homogeneous_cluster_names(true)
+true = true.set_index('Particle ID')
+grouped_df = true[['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature']].groupby('Particle ID')
+
+obs_list = [obs.values.T for pid, obs in grouped_df]
+obs_list = interp_sequences(obs_list, 120)
+X_true = trapz(obs_list, axis = 2)
+X_true = pd.DataFrame(X_true, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
+
+y_true = true.groupby('Particle ID')['cluster'].apply(np.unique)
+y_true = np.stack(y_true)[:,0]
+y_enc = np.array([list(tn[tn['Particle_class'] == yi]['label'])[0] for yi in y_true])
+
+y_knn = knn.predict(X_true) # Use prefitted knn
+
+np.mean(y_knn == y_enc)
+
+
+plot_2Dcyto(X_true, y_knn, tn, q1, q2, colors)
+
+
 ###################################################################################################################
 # Randomly pick some Endoume predictions and plot true vs pred 
 ###################################################################################################################
 import re
 import fastparquet as fp
-from ffnn_functions import homogeneous_cluster_names
+from dataset_prepocessing import homogeneous_cluster_names
 
 
 true_folder = 'C:/Users/rfuchs/Documents/SSLAMM_P1/SSLAMM_True_L1'
@@ -203,7 +342,7 @@ set(true.index) - set(a.index)
 #############################################################################################
 # Plot predicted time series 
 #############################################################################################
-from ffnn_functions import homogeneous_cluster_names
+from dataset_prepocessing import homogeneous_cluster_names
 
 ts = pd.read_csv('C:/Users/rfuchs/Documents/09_to_12_2019.csv')
 ts['date'] =  pd.to_datetime(ts['date'], format='%Y-%m-%d %H:%M:%S')

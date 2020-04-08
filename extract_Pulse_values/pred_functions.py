@@ -5,16 +5,15 @@ Created on Fri Dec  6 16:24:12 2019
 @author: Robin
 """
 
-from ffnn_functions import custom_pad_sequences, interp_sequences, homogeneous_cluster_names
+from dataset_prepocessing import interp_sequences, homogeneous_cluster_names
 import pandas as pd
 import numpy as np
 import scipy.integrate as it
-from ffnn_functions import scaler
+from dataset_prepocessing import scaler
 import fastparquet as fp
 import re
-import matplotlib.pyplot as plt
 
-def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_ground_truth = True):
+def predict(source_path, dest_folder, model, tn, scale = False, is_ground_truth = True):
     ''' Predict the class of unlabelled data with a pre-trained model and store them in a folder
     source_path (str): The path to the file containing the formatted unlabeled data
     dest_folder (str): The folder to store the predictions
@@ -34,8 +33,22 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
         print('Particle ID was not found in column names')
   
  
-    if len(df) > 0: # Delete empty dataframes
-        pid_list = list(set(df.index))
+    if len(df) > 0: # Delete empty dataframes       
+        if is_ground_truth:
+            df = homogeneous_cluster_names(df)
+            true_labels = df.groupby('Particle ID')['cluster'].apply(np.unique)
+            
+            # Delete particles affiliated to 2 different groups
+            not_corrupted_idx = true_labels.loc[true_labels.apply(len) == 1].index
+            df = df.loc[not_corrupted_idx]
+            pid_list = list(not_corrupted_idx)
+            
+            true_labels = true_labels.loc[not_corrupted_idx]
+            true_labels = np.stack(true_labels)[:,0]
+            
+        else:   
+            pid_list = list(set(df.index))
+            
         grouped_df = df[['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature']].groupby('Particle ID')
     
         total_df = grouped_df.agg(
@@ -46,10 +59,6 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
              'FL Red': it.trapz,
              'Curvature': it.trapz,
         })
-            
-        if is_ground_truth:
-            true_labels = df.groupby('Particle ID')['cluster'].apply(np.unique)
-            true_labels = np.stack(true_labels)[:,0]
         
         obs_list = [obs.values.T for pid, obs in grouped_df]
     
@@ -58,13 +67,10 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
         if is_ground_truth:
             assert len(set(df.index)) == len(true_labels)
             
-        # Defining a fixed length for all the sequence: 0s are added for shorter sequences and longer sequences are truncated    
-        if pad:
-            obs_list = custom_pad_sequences(obs_list, max_len)
-        else:
-            obs_list = interp_sequences(obs_list, max_len)
+        obs_list = interp_sequences(obs_list, max_len)
         
         X = np.transpose(obs_list, (0, 2, 1))
+        
         if scale:
             X = scaler(X)
             
@@ -72,7 +78,6 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
         
         
         if is_ground_truth:
-            true_labels = homogeneous_cluster_names(np.array(true_labels))
             formatted_preds = pd.DataFrame({'Particle ID': pid_list, \
                                             'Total FWS': total_df['FWS'], 'Total SWS': total_df['SWS'], \
                                             'Total FLO': total_df['FL Orange'], 'Total FLR': total_df['FL Red'], \
@@ -87,7 +92,7 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
                                             'Total CURV': total_df['Curvature'], \
                                             'Pred FFT id': preds, 'Pred FFT Label': None})         
         # Add string labels
-        tn_dict = tn.set_index('id')['Label'].to_dict()
+        tn_dict = tn.set_index('label')['Particle_class'].to_dict()
     
         for id_, label in tn_dict.items():
             formatted_preds.loc[formatted_preds['Pred FFT id'] == id_, 'Pred FFT Label'] = label
@@ -106,37 +111,3 @@ def predict(source_path, dest_folder, model, tn, scale = False, pad = False, is_
         print('File was empty.')
 
 
-def plot_2D(preds, tn, q1, q2, loc = 'upper left', title = None):
-    ''' Plot 2D cytograms as for manual classification '''
-    
-    colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue']
-
-    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(16,4))
-    for id_, label in enumerate(list(tn['Label'])):
-        obs = preds[preds['True FFT Label'] == label]
-        ax1.scatter(obs[q1], obs[q2], c = colors[id_], label= label, s=1)
-        ax1.legend(loc= loc, shadow=True, fancybox=True, prop={'size':8})
-    
-    ax1.set_title('True :' +  q1 + ' vs ' + q2)
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    ax1.set_xlabel(q1)
-    ax1.set_ylabel(q2)
-    ax1.set_xlim(1, 10**6)
-    ax1.set_ylim(1, 10**6)
-    
-    
-    for id_, label in enumerate(list(tn['Label'])):
-        obs = preds[preds['Pred FFT Label'] == label]
-        ax2.scatter(obs[q1], obs[q2], c = colors[id_], label= label, alpha=1, s=1)
-        ax2.legend(loc= loc, shadow=True, fancybox=True, prop={'size':8})
-    ax2.set_title('Pred :' +  q1 + ' vs ' + q2)
-    ax2.set_xscale('log')
-    ax2.set_yscale('log')
-    ax2.set_xlabel(q1)
-    ax2.set_ylabel(q2)
-    ax2.set_xlim(1, 10**6)
-    ax2.set_ylim(1, 10**6)
-    
-    if title != None:
-        plt.savefig(title)
