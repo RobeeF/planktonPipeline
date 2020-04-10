@@ -33,13 +33,13 @@ os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
 tn = pd.read_csv('train_test_nomenclature.csv')
 tn.columns = ['Particle_class', 'label']
 
+
 ##############################################################################################
-################### Fresh new start with all FUMSECK Data ####################################
+######################### Train Model 13 on FUMSECK Data ####################################
 ##############################################################################################
 
 from collections import Counter
 from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours
-
 
 source = "FUMSECK_L2_fp"
 mnbf = 6 # Total number of files to extract
@@ -112,9 +112,10 @@ X_train = X_train[ids_rs.flatten()]
 
 
 w = 1/ np.sum(y_valid, axis = 0)
-w[-2] = w[-2] * 1.2 # Make the weight of prochloro rise
-w = np.where(w == np.inf, np.max(w) * 2 , w)
+#w[-2] = w[-2] * 1.2 # Make the weight of prochloro rise
+w = np.where(w == np.inf, np.max(w[np.isfinite(w)]) * 2 , w)
 w = w / w.sum() 
+
 
 batch_size = 128
 STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
@@ -123,14 +124,15 @@ STEP_SIZE_VALID = (len(X_valid) // batch_size) + 1
 cffnn = model13(X_train, y_train, dp = 0.2)
 ENN_check = ModelCheckpoint(filepath='tmp/weights_ENN.hdf5', verbose = 1, save_best_only=True)
 
-epoch_nb = 5
-for i in range(epoch_nb):
-    
-    history = cffnn.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
-                        steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
-                        epochs = 1, callbacks = [ENN_check], class_weight = w, shuffle=True)
+epoch_nb = 1
+
+history = cffnn.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
+                    steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
+                    epochs = epoch_nb, callbacks = [ENN_check], class_weight = w, shuffle=True)
 
 cffnn.load_weights('tmp/weights_ENN.hdf5')
+
+
 
 #### Compute accuracies #####
 
@@ -139,7 +141,7 @@ preds = np.argmax(cffnn.predict(X_train), axis = 1)
 true = np.argmax(y_train, axis = 1)
 acc = np.mean(preds == true)
 print('Accuracy on train data !', acc)
-print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print('Macro accuracy is', precision_score(true, preds, average='weighted'))
 print(confusion_matrix(true, preds))    
 
 # Compute valid accuracy
@@ -147,7 +149,8 @@ preds = np.argmax(cffnn.predict(X_valid), axis = 1)
 true = np.argmax(y_valid, axis = 1)
 acc = np.mean(preds == true)
 print('Accuracy on valid data !', acc)
-print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print('Weighted accuracy is', precision_score(true, preds, \
+                        average='weighted', zero_division = 0))
 print(confusion_matrix(true, preds))
 
 # Compute test accuracy
@@ -166,7 +169,6 @@ print(confusion_matrix(true, preds))
 
 # Good model : Save model
 cffnn.save('ENN_LottyNet_FUMSECK')
-
 
 ############################################################################################################
 ################## Fine tune the LottyNet_FUMSECK on Endoume first week data ###############################

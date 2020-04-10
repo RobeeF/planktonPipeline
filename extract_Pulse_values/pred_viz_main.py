@@ -28,10 +28,9 @@ from viz_functions import plot_2D
 from keras.models import load_model
 from time import time
 
-start = time()
 
 folder = 'C:/Users/rfuchs/Documents/cyto_classif'
-file = 'FUMSECK_L2_fp/Labelled_Pulse6_2019-05-06 10h09.parq'
+file = 'SSLAMM/Week1/Labelled_Pulse6_2019-09-18 14h35.parq'
 
 
 date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
@@ -39,7 +38,7 @@ pred_file = 'Pulse6_2019-05-06 10h09.csv'
 os.chdir(folder)
 
 # Load pre-trained model
-LottyNet = load_model('C:/Users/rfuchs/Documents/cyto_classif/ENN_LottyNet_FUMSECK') 
+LottyNet = load_model('C:/Users/rfuchs/Documents/cyto_classif/LottyNet_FUMSECK') 
 
 # Making formated predictions 
 source_path = folder + '/' + file

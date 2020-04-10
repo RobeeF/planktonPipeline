@@ -5,7 +5,8 @@ Created on Mon Jul  1 18:03:04 2019
 @author: robin
 """
 
-from keras.layers import Input, Dense, Conv1D, Concatenate, GlobalAveragePooling1D, Dropout, MaxPooling1D, LSTM, Flatten
+from keras.layers import Input, Dense, Conv1D, Concatenate, GlobalAveragePooling1D, \
+            Dropout, MaxPooling1D, LSTM, Flatten
 from keras.models import Model
 from keras import optimizers
 
@@ -197,7 +198,7 @@ def model13(X, y, dp = 0.2):
     returns (Keras Model): The compiled model 
     '''
     N_CLASSES = y.shape[1]
-    max_len = nb_curves = X.shape[1]
+    max_len = X.shape[1]
     nb_curves = X.shape[2]
     
     sequence_input = Input(shape=(max_len, nb_curves), dtype='float32')
