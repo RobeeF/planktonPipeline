@@ -58,7 +58,7 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
             valid_classes = valid_classes + vc
         
         valid_classes = np.unique(valid_classes)
-
+        
         if (len(valid_classes) == len(cluster_classes)):
             not_all_classes_in_valid = False
 

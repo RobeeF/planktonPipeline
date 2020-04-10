@@ -8,12 +8,17 @@ Created on Wed Apr  8 16:17:23 2020
 import matplotlib.pyplot as plt
 
 
-def plot_2Dcyto(X, y, tn, q1, q2):
+def plot_2Dcyto(X, y, tn, q1, q2, colors = None):
+    ''' Plot a 2D cytogram of dimension q1 vs dimension q2 
+    X (n x curve_length x nb_curves ndarray): The curves representing the particules
+    '''
     
-    colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue']
+    if colors = None:
+        #colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue', 'silver']
+        colors = ['#96ceb4', 'gold', 'lawngreen', 'black', 'green', 'red', 'purple', 'blue', 'grey']
 
     fig, ax1 = plt.subplots(1,1, figsize=(12,6))
-    for id_, label in enumerate(list(tn['label'])):
+    for id_, label in enumerate(list(tn['Particle_class'])):
         obs = X[y == label]
         ax1.scatter(obs[q1], obs[q2], c = colors[id_], label= label, s = 1)
         ax1.legend(loc= 'upper left', shadow=True, fancybox=True, prop={'size':8})
@@ -32,7 +37,7 @@ def plot_2Dcyto(X, y, tn, q1, q2):
 def plot_2D(preds, tn, q1, q2, loc = 'upper left', title = None): # Change name
     ''' Plot 2D cytograms as for manual classification. True vs Pred '''
     
-    colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue']
+    colors = ['#96ceb4', 'gold', 'black', 'green', 'grey', 'red', 'purple', 'blue', 'silver']
 
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=(16,4))
     for id_, label in enumerate(list(tn['Particle_class'])):

@@ -6,7 +6,7 @@ import fastparquet as fp
 
 ### Serious need for refactorisation here..
 
-def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extract_FLR = False):
+def extract_labeled_curves(data_source, data_destination, flr_num = 6, spe_extract_FLR = False):
     ''' Create 5 labelled curves per particle in the files in the data_source repository. 
     The curves data are placed in data_destination. This function works for the FUMSECK data
     data_source (str): The path to the original source of data
@@ -38,15 +38,18 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
     date_regex = "FLR" + str(flr_num) + " (20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}h[0-9]{2})_[A-Za-z ()]+"
     pulse_regex = "_([a-zA-Z0-9 ()]+)_Pulses.csv"  
 
-    dates = set([re.search(date_regex, f).group(1) for f in flr_title if  re.search("Pulse",f) and re.search("Default",f)])
+    dates = set([re.search(date_regex, f).group(1) for f in flr_title if  re.search("Pulse",f)])
     cluster_classes = list(set([re.search(pulse_regex, cc).group(1) for cc in pulse_titles_clus]))
-    cluster_classes += ['noise']
+    
+    if len(pulse_titles_default) != 0:
+        cluster_classes += ['noise']
      
     nb_acquisitions = len(dates)
     
     if nb_acquisitions == 0:
         print('No file found...')
     
+    #date = list(dates)[0]
     for date in dates: # For each acquisition
         print(nb_files_already_processed, '/', nb_acquisitions, "files have already been processed")
         print("Processing:", date)
@@ -61,20 +64,10 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
         # Get the info about each particule and its cluster label
         date_datasets_titles = [t for t in pulse_titles_clus if re.search(date, t)]
         
+        #title= date_datasets_titles[0]
         # For each file, i.e. for each functional group
         for title in date_datasets_titles:
-            print(title)
             clus_name = re.search(pulse_regex, title).group(1) 
-
-            # Legacy
-            #if spe_extract_FLR:
-                # Always extract big particles because they are rare
-                #if (flr_num == 6) & (clus_name in ['cryptophytes', 'Nano1', 'Nano2', 'nanoeucaryotes', 'microphytoplancton', 'microphytoplanctons', 'coccolithophorideae like']):   	
-                    #continue
-                #if (flr_num == 25) & (clus_name in ['picoeucaryotes', 'synechococcus', 'Prochlorococcus', 'PicoHIGHFLR']):
-                    #continue
-                
-            #print(title)
             
             try:
                 df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64)
@@ -84,9 +77,9 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
                 except pd.errors.EmptyDataError:
                     print('Empty dataset')
                     continue
-                    
-            df = df[df["Particle ID"] != 0] # Delete formatting zeros
-                        
+
+            df = df[df.values.sum(axis=1) != 0] # Delete formatting zeros
+                                            
             # Add the date of the extraction
             df["date"] = date
             
@@ -97,33 +90,37 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
             df.set_index("Particle ID", inplace = True)
 
             pulse_data = pulse_data.append(df)
-
-        ## Extract info of noise particles from the default file
-        title = [t for t in pulse_titles_default if re.search(date, t)][0] # Dirty
-        #print(title)
         
-        try:
-            df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64)
-        except ValueError: # If the data are in European format ("," stands for decimals and not thousands)
+        #===========================================================
+        # Extract info of noise particles from the default file
+        #===========================================================
+        
+        if len(pulse_titles_default) > 0:
+            
+            title = [t for t in pulse_titles_default if re.search(date, t)][0] # Dirty
+            
             try:
-                df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
-            except pd.errors.EmptyDataError:
-                print('Empty dataset')
-                continue
-        
-        df = df[df.values.sum(axis=1) != 0] # Delete formatting zeros
-        df["date"] = date
-        
-        existing_indices = pulse_data[pulse_data['date']==date].index
-
-        df.set_index("Particle ID", inplace = True)
-        noise_indices = list(set(df.index) - set(existing_indices)) # Determining the noise particles indices
-        df = df.loc[noise_indices] # Keep only the noise particles 
+                df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64)
+            except ValueError: # If the data are in European format ("," stands for decimals and not thousands)
+                try:
+                    df = pd.read_csv(data_source + '/' + title, sep = ';', dtype = np.float64, thousands='.', decimal=',')
+                except pd.errors.EmptyDataError:
+                    print('Empty dataset')
+                    continue
+            
+            df = df[df.values.sum(axis=1) != 0] # Delete formatting zeros
+            df["date"] = date
+            
+            existing_indices = pulse_data[pulse_data['date']==date].index
     
-        clus_name = "noise"
-        df["cluster"] = clus_name
-    
-        pulse_data = pulse_data.append(df)
+            df.set_index("Particle ID", inplace = True)
+            noise_indices = list(set(df.index) - set(existing_indices)) # Determining the noise particles indices
+            df = df.loc[noise_indices] # Keep only the noise particles 
+        
+            clus_name = "noise"
+            df["cluster"] = clus_name
+        
+            pulse_data = pulse_data.append(df)
 
         if spe_extract_FLR & (flr_num == 25): 
             prev_len = len(pulse_data)
@@ -132,7 +129,6 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
             new_len = len(pulse_data)
             print('Dropped', prev_len - new_len, 'lines')
             
-        #pulse_data.to_csv(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.csv') # Store the data on hard disk
         fp.write(data_destination + '/Labelled_Pulse' + str(flr_num) + '_' + date + '.parq', pulse_data, compression='SNAPPY')
 
     
@@ -143,8 +139,8 @@ def extract_curves_values(data_source, data_destination, flr_num = 6, spe_extrac
         print('------------------------------------------------------------------------------------')
 
 
-def format_for_pred(data_source, data_destination, flr_num = 6):
-    ''' Create 5 labelled curves per particle in the files in the data_source repository. 
+def extract_non_labeled_curves(data_source, data_destination, flr_num = 6):
+    ''' Create 5 curves per particle in the files in the data_source repository. 
     The curves data are placed in data_destination. This function works for the FUMSECK data
     data_source (str): The path to the original source of data
     data_features (str) : The path to write the data to

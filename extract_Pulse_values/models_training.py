@@ -12,6 +12,8 @@ import pandas as pd
 from time import time
 from scipy.integrate import trapz
 from keras.callbacks import ModelCheckpoint
+from keras.optimizers import adam
+from keras.callbacks import EarlyStopping
 from sklearn.metrics import confusion_matrix, precision_score
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline')
@@ -25,14 +27,11 @@ from dataset_prepocessing import gen_dataset, gen_train_test_valid
 from viz_functions import plot_2D, plot_2Dcyto
 from pred_functions import predict
 
+
 raw_data_source = 'L1_FUMSECK'
 cleaned_data_source = 'L2_FUMSECK'
 
 os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
-
-tn = pd.read_csv('train_test_nomenclature.csv')
-tn.columns = ['Particle_class', 'label']
-
 
 ##############################################################################################
 ######################### Train Model 13 on FUMSECK Data ####################################
@@ -40,6 +39,9 @@ tn.columns = ['Particle_class', 'label']
 
 from collections import Counter
 from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours
+
+tn = pd.read_csv('train_test_nomenclature.csv')
+tn.columns = ['Particle_class', 'label']
 
 source = "FUMSECK_L2_fp"
 mnbf = 6 # Total number of files to extract
@@ -52,10 +54,10 @@ prop = [1 - (nb_valid_files + nb_test_files) / mnbf, nb_valid_files / mnbf, nb_t
 start = time()
 X_train, y_train, X_valid, y_valid, X_test, y_test = gen_train_test_valid(source, cluster_classes, mnbf, prop)
 end = time()
-print(end - start)
+print(end - start) # About 2 or 3 hours to extract it
 
 
-# Save the dataset (2 or 3 hours to extract it)
+# Save the dataset 
 '''
 np.save('FUMSECK_L3/X_train610', X_train)
 np.save('FUMSECK_L3/y_train610', y_train)
@@ -112,7 +114,6 @@ X_train = X_train[ids_rs.flatten()]
 
 
 w = 1/ np.sum(y_valid, axis = 0)
-#w[-2] = w[-2] * 1.2 # Make the weight of prochloro rise
 w = np.where(w == np.inf, np.max(w[np.isfinite(w)]) * 2 , w)
 w = w / w.sum() 
 
@@ -178,7 +179,6 @@ os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values
 
 from keras.models import load_model
 import numpy as np
-from keras.optimizers import adam
 from keras import metrics
 
 fumseck = load_model('trained_models/LottyNet_FUMSECK')
@@ -298,3 +298,139 @@ q2 = 'Total FLR'
 
 plot_2D(preds, tn, q1, q2)
 
+
+##############################################################################################
+######################### Train Model 13 on Endoume Data ####################################
+##############################################################################################
+from collections import Counter
+from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours
+
+os.chdir('C:/Users/rfuchs/Documents/SSLAMM_P1')
+
+
+cluster_classes = ['airbubble', 'cryptophyte', 'hsnano', 'microphytoplancton',
+       'nanoeucaryote', 'picoeucaryote', 'prochlorococcus',
+       'synechococcus', 'unassigned particle']
+
+source = "SSLAMM_lab_compiled_L1"
+mnbf = 38 # Total number of files to extract
+max_nb_files_extract = mnbf
+nb_valid_files = 4
+nb_test_files = 1
+prop = [1 - (nb_valid_files + nb_test_files) / mnbf, nb_valid_files / mnbf, nb_test_files / mnbf]
+
+
+start = time()
+X_train, y_train, X_valid, y_valid, X_test, y_test = gen_train_test_valid(source, cluster_classes, mnbf, prop)
+end = time()
+print(end - start) # About 8 minutes
+
+
+'''
+np.save('SSLAMM_L3/X_train', X_train)
+np.save('SSLAMM_L3/y_train', y_train)
+
+np.save('SSLAMM_L3/X_valid', X_valid)
+np.save('SSLAMM_L3/y_valid', y_valid)
+
+np.save('SSLAMM_L3/X_test', X_test)
+np.save('SSLAMM_L3/y_test', y_test)
+'''
+
+
+# Load data
+X_train = np.load('FUMSECK_L3/X_train610.npy')
+y_train = np.load('FUMSECK_L3/y_train610.npy')
+
+X_valid = np.load('FUMSECK_L3/X_valid610.npy')
+y_valid = np.load('FUMSECK_L3/y_valid610.npy')
+
+X_test = np.load('FUMSECK_L3/X_test610.npy')
+y_test = np.load('FUMSECK_L3/y_test610.npy')
+
+tn = pd.read_csv('SSLAMM_lab_compiled_L1/train_test_nomenclature.csv')
+tn.columns = ['Particle_class', 'label']
+
+
+#======================================
+# Small viz 
+#======================================*
+X = trapz(X_train, axis = 1)
+X = pd.DataFrame(X, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
+y = y_train.argmax(1)
+y = np.array([list(tn[tn['label'] == yi]['Particle_class'])[0] for yi in y])
+
+q1 = 'FWS'
+q2 = 'FL Red'
+
+plot_2Dcyto(X, y, tn, q1, q2)
+
+#========================================
+# Fitting model
+#========================================
+
+w = 1/ np.sum(y_valid, axis = 0)
+w = np.where(w == np.inf, np.max(w[np.isfinite(w)]) * 2 , w)
+w = w / w.sum() 
+
+
+batch_size = 64
+STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
+STEP_SIZE_VALID = (len(X_valid) // batch_size) + 1 
+
+sslamm_clf = model13(X_train, y_train, dp = 0.2)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=1)
+ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm.hdf5',\
+                            verbose = 1, save_best_only=True)
+
+
+ad = adam(lr=1e-2)
+sslamm_clf.compile(optimizer=ad, loss='categorical_crossentropy', \
+                metrics=['accuracy'])
+
+epoch_nb = 3
+
+history = sslamm_clf.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
+                    steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
+                    epochs = epoch_nb, callbacks = [ENN_check, es], class_weight = w,\
+                        shuffle=True)
+
+sslamm_clf.load_weights('tmp/weights_sslamm.hdf5')
+
+
+
+#### Compute accuracies #####
+
+# Compute train accuracy
+preds = np.argmax(cffnn.predict(X_train), axis = 1)
+true = np.argmax(y_train, axis = 1)
+acc = np.mean(preds == true)
+print('Accuracy on train data !', acc)
+print('Macro accuracy is', precision_score(true, preds, average='weighted'))
+print(confusion_matrix(true, preds))    
+
+# Compute valid accuracy
+preds = np.argmax(cffnn.predict(X_valid), axis = 1)
+true = np.argmax(y_valid, axis = 1)
+acc = np.mean(preds == true)
+print('Accuracy on valid data !', acc)
+print('Weighted accuracy is', precision_score(true, preds, \
+                        average='weighted', zero_division = 0))
+print(confusion_matrix(true, preds))
+
+# Compute test accuracy
+start = time()
+preds = np.argmax(cffnn.predict(X_test), axis = 1)
+end = time()
+print(end - start)
+true = np.argmax(y_test, axis = 1)
+
+acc = np.mean(preds == true)
+print('Accuracy on test data !', acc)
+print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print(confusion_matrix(true, preds))
+#print('categorical ce is ', - np.sum(true * np.log(preds)))
+    
+
+# Good model : Save model
+cffnn.save('ENN_LottyNet_FUMSECK')
