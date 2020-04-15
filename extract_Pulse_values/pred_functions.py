@@ -5,11 +5,11 @@ Created on Fri Dec  6 16:24:12 2019
 @author: Robin
 """
 
-from dataset_prepocessing import interp_sequences, homogeneous_cluster_names
+from dataset_preprocessing import interp_sequences, homogeneous_cluster_names
 import pandas as pd
 import numpy as np
 import scipy.integrate as it
-from dataset_prepocessing import scaler
+from dataset_preprocessing import scaler
 import fastparquet as fp
 import re
 
@@ -31,8 +31,8 @@ def predict(source_path, dest_folder, model, tn, scale = False, is_ground_truth 
         df = df.set_index('Particle ID')
     except:
         print('Particle ID was not found in column names')
-  
- 
+   
+    
     if len(df) > 0: # Delete empty dataframes       
         if is_ground_truth:
             df = homogeneous_cluster_names(df)
@@ -101,11 +101,11 @@ def predict(source_path, dest_folder, model, tn, scale = False, is_ground_truth 
                 formatted_preds.loc[formatted_preds['True FFT Label'] == label, 'True FFT id'] = id_
                     
     
-    
         # Store the predictions on hard disk 
         date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
         file_name = re.search(date_regex, source_path).group(1)
         formatted_preds.to_csv(dest_folder + '/' + file_name + '.csv', index = False)
+        
         
     else:
         print('File was empty.')

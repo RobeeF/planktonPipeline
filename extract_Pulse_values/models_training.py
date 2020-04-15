@@ -10,11 +10,14 @@ import os
 import pandas as pd
 
 from time import time
+from collections import Counter
+
 from scipy.integrate import trapz
 from keras.callbacks import ModelCheckpoint
 from keras.optimizers import adam
 from keras.callbacks import EarlyStopping
 from sklearn.metrics import confusion_matrix, precision_score
+
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline')
 cluster_classes = pd.read_csv('nomenclature.csv')['Nomenclature'].tolist()
@@ -23,9 +26,9 @@ from keras_utils import  model13
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values')
 
-from dataset_prepocessing import gen_dataset, gen_train_test_valid
-from viz_functions import plot_2D, plot_2Dcyto
 from pred_functions import predict
+from losses import categorical_focal_loss, CB_loss
+from viz_functions import plot_2D, plot_2Dcyto
 
 
 raw_data_source = 'L1_FUMSECK'
@@ -37,37 +40,11 @@ os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
 ######################### Train Model 13 on FUMSECK Data ####################################
 ##############################################################################################
 
-from collections import Counter
 from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours
 
-tn = pd.read_csv('train_test_nomenclature.csv')
+tn = pd.read_csv('train_test_nomenclature_FUMSECK.csv')
 tn.columns = ['Particle_class', 'label']
 
-source = "FUMSECK_L2_fp"
-mnbf = 6 # Total number of files to extract
-max_nb_files_extract = mnbf
-nb_valid_files = 4
-nb_test_files = 1
-prop = [1 - (nb_valid_files + nb_test_files) / mnbf, nb_valid_files / mnbf, nb_test_files / mnbf]
-
-
-start = time()
-X_train, y_train, X_valid, y_valid, X_test, y_test = gen_train_test_valid(source, cluster_classes, mnbf, prop)
-end = time()
-print(end - start) # About 2 or 3 hours to extract it
-
-
-# Save the dataset 
-'''
-np.save('FUMSECK_L3/X_train610', X_train)
-np.save('FUMSECK_L3/y_train610', y_train)
-
-np.save('FUMSECK_L3/X_valid610', X_valid)
-np.save('FUMSECK_L3/y_valid610', y_valid)
-
-np.save('FUMSECK_L3/X_test610', X_test)
-np.save('FUMSECK_L3/y_test610', y_test)
-'''
 
 # Load data
 X_train = np.load('FUMSECK_L3/X_train610.npy')
@@ -143,7 +120,7 @@ true = np.argmax(y_train, axis = 1)
 acc = np.mean(preds == true)
 print('Accuracy on train data !', acc)
 print('Macro accuracy is', precision_score(true, preds, average='weighted'))
-print(confusion_matrix(true, preds))    
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
 
 # Compute valid accuracy
 preds = np.argmax(cffnn.predict(X_valid), axis = 1)
@@ -152,21 +129,16 @@ acc = np.mean(preds == true)
 print('Accuracy on valid data !', acc)
 print('Weighted accuracy is', precision_score(true, preds, \
                         average='weighted', zero_division = 0))
-print(confusion_matrix(true, preds))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
 
 # Compute test accuracy
-start = time()
 preds = np.argmax(cffnn.predict(X_test), axis = 1)
-end = time()
-print(end - start)
 true = np.argmax(y_test, axis = 1)
 
 acc = np.mean(preds == true)
 print('Accuracy on test data !', acc)
 print('Macro accuracy is', precision_score(true, preds, average='macro'))
-print(confusion_matrix(true, preds))
-#print('categorical ce is ', - np.sum(true * np.log(preds)))
-    
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
 
 # Good model : Save model
 cffnn.save('ENN_LottyNet_FUMSECK')
@@ -190,12 +162,6 @@ fumseck = load_model('trained_models/LottyNet_FUMSECK')
 os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
 
 source = "SSLAMM/Week1"
-mnbf = 6 # Total number of files to extract
-max_nb_files_extract = mnbf
-nb_valid_files = 4
-nb_test_files = 1
-prop = [1 - (nb_valid_files + nb_test_files) / mnbf, nb_valid_files / mnbf, nb_test_files / mnbf]
-
 
 files = os.listdir(source)
 train_files = files[2:]
@@ -231,30 +197,6 @@ fumseck.compile(optimizer=ad, loss='categorical_crossentropy', \
 #================================================================
 # Data importation and model fitting
 #================================================================
-
-X_train_SLAAMM, seq_len_list_train_SLAAMM, y_train_SLAAMM, pid_list_train_SLAAMM, file_name_train_SLAAMM, le_train = gen_dataset(source, \
-                            cluster_classes, train_files, None, nb_obs_to_extract_per_group = 100, \
-                            pad = False, to_balance = True, seed = None)
-    
-X_valid_SLAAMM, seq_len_list_valid_SLAAMM, y_valid_SLAAMM, pid_list_valid, file_name_valid_SLAAMM, le_valid = gen_dataset(source, \
-                            cluster_classes, valid_files, None, nb_obs_to_extract_per_group = 600, default_sampling_nb = 70,\
-                            pad = False, to_balance = False, to_undersample = True, seed = None)
-
-# Extract the test dataset from full files
-X_test_SLAAMM, seq_len_list_test_SLAAMM, y_test_SLAAMM, pid_list_test_SLAAMM, file_name_test_SLAAMM, le_test = gen_dataset(source, \
-                            cluster_classes, test_files, None, nb_obs_to_extract_per_group = 100, \
-                            pad = False, to_balance = False, to_undersample = False, seed = None)
-
-    
-np.save('FUMSECK_L3/X_trainFLR6_SSLAMM', X_train_SLAAMM)
-np.save('FUMSECK_L3/y_trainFLR6_SSLAMM', y_train_SLAAMM)
-
-np.save('FUMSECK_L3/X_validFLR6_SSLAMM', X_valid_SLAAMM)
-np.save('FUMSECK_L3/y_validFLR6_SSLAMM', y_valid_SLAAMM)
-
-np.save('FUMSECK_L3/X_testFLR6_SSLAMM', X_test_SLAAMM)
-np.save('FUMSECK_L3/y_testFLR6_SSLAMM', y_test_SLAAMM)
-
 
     
 X_train_SLAAMM = np.load('FUMSECK_L3/X_trainFLR6_SSLAMM.npy')
@@ -302,53 +244,24 @@ plot_2D(preds, tn, q1, q2)
 ##############################################################################################
 ######################### Train Model 13 on Endoume Data ####################################
 ##############################################################################################
+
 from collections import Counter
-from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours
-
-os.chdir('C:/Users/rfuchs/Documents/SSLAMM_P1')
-
 
 cluster_classes = ['airbubble', 'cryptophyte', 'hsnano', 'microphytoplancton',
        'nanoeucaryote', 'picoeucaryote', 'prochlorococcus',
        'synechococcus', 'unassigned particle']
 
-source = "SSLAMM_lab_compiled_L1"
-mnbf = 38 # Total number of files to extract
-max_nb_files_extract = mnbf
-nb_valid_files = 4
-nb_test_files = 1
-prop = [1 - (nb_valid_files + nb_test_files) / mnbf, nb_valid_files / mnbf, nb_test_files / mnbf]
-
-
-start = time()
-X_train, y_train, X_valid, y_valid, X_test, y_test = gen_train_test_valid(source, cluster_classes, mnbf, prop)
-end = time()
-print(end - start) # About 8 minutes
-
-
-'''
-np.save('SSLAMM_L3/X_train', X_train)
-np.save('SSLAMM_L3/y_train', y_train)
-
-np.save('SSLAMM_L3/X_valid', X_valid)
-np.save('SSLAMM_L3/y_valid', y_valid)
-
-np.save('SSLAMM_L3/X_test', X_test)
-np.save('SSLAMM_L3/y_test', y_test)
-'''
-
-
 # Load data
-X_train = np.load('FUMSECK_L3/X_train610.npy')
-y_train = np.load('FUMSECK_L3/y_train610.npy')
+X_train = np.load('SSLAMM_L3/X_train.npy')
+y_train = np.load('SSLAMM_L3/y_train.npy')
 
-X_valid = np.load('FUMSECK_L3/X_valid610.npy')
-y_valid = np.load('FUMSECK_L3/y_valid610.npy')
+X_valid = np.load('SSLAMM_L3/X_valid.npy')
+y_valid = np.load('SSLAMM_L3/y_valid.npy')
 
-X_test = np.load('FUMSECK_L3/X_test610.npy')
-y_test = np.load('FUMSECK_L3/y_test610.npy')
+X_test = np.load('SSLAMM_L3/X_test.npy')
+y_test = np.load('SSLAMM_L3/y_test.npy')
 
-tn = pd.read_csv('SSLAMM_lab_compiled_L1/train_test_nomenclature.csv')
+tn = pd.read_csv('train_test_nomenclature_SSLAMM.csv')
 tn.columns = ['Particle_class', 'label']
 
 
@@ -371,16 +284,16 @@ plot_2Dcyto(X, y, tn, q1, q2)
 
 w = 1/ np.sum(y_valid, axis = 0)
 w = np.where(w == np.inf, np.max(w[np.isfinite(w)]) * 2 , w)
+#w[-3] = w[-3] * 1.2
 w = w / w.sum() 
-
 
 batch_size = 64
 STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
-STEP_SIZE_VALID = (len(X_valid) // batch_size) + 1 
+STEP_SIZE_VALID = (len(X_valid) // 128) + 1 
 
 sslamm_clf = model13(X_train, y_train, dp = 0.2)
-es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=1)
-ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm.hdf5',\
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=4)
+ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm_sup.hdf5',\
                             verbose = 1, save_best_only=True)
 
 
@@ -388,39 +301,81 @@ ad = adam(lr=1e-2)
 sslamm_clf.compile(optimizer=ad, loss='categorical_crossentropy', \
                 metrics=['accuracy'])
 
-epoch_nb = 3
+epoch_nb = 10
 
 history = sslamm_clf.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
                     steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
                     epochs = epoch_nb, callbacks = [ENN_check, es], class_weight = w,\
                         shuffle=True)
 
-sslamm_clf.load_weights('tmp/weights_sslamm.hdf5')
+sslamm_clf.load_weights('tmp/weights_sslamm_sup.hdf5')
 
 
 
 #### Compute accuracies #####
 
 # Compute train accuracy
-preds = np.argmax(cffnn.predict(X_train), axis = 1)
+preds = np.argmax(sslamm_clf.predict(X_train), axis = 1)
 true = np.argmax(y_train, axis = 1)
 acc = np.mean(preds == true)
 print('Accuracy on train data !', acc)
-print('Macro accuracy is', precision_score(true, preds, average='weighted'))
-print(confusion_matrix(true, preds))    
+print('Weighted accuracy is', precision_score(true, preds, average='weighted'))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
 
 # Compute valid accuracy
-preds = np.argmax(cffnn.predict(X_valid), axis = 1)
+preds = np.argmax(sslamm_clf.predict(X_valid), axis = 1)
 true = np.argmax(y_valid, axis = 1)
 acc = np.mean(preds == true)
 print('Accuracy on valid data !', acc)
 print('Weighted accuracy is', precision_score(true, preds, \
                         average='weighted', zero_division = 0))
-print(confusion_matrix(true, preds))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
+
+# Compute test accuracy
+preds = np.argmax(sslamm_clf.predict(X_test), axis = 1)
+true = np.argmax(y_test, axis = 1)
+
+acc = np.mean(preds == true)
+print('Accuracy on test data !', acc)
+print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
+    
+# Good model : Save model
+sslamm_clf.save('LottyNet_SSLAMM')
+
+
+##############################################################################################
+############################ Try with focal loss  ############################################
+##############################################################################################
+
+batch_size = 64
+STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
+STEP_SIZE_VALID = (len(X_valid) // 128) + 1 
+
+sslamm_clf = model13(X_train, y_train, dp = 0.2)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=4)
+ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm_focal.hdf5',\
+                            verbose = 1, save_best_only=True)
+
+
+ad = adam(lr=1e-2)
+sslamm_clf.compile(loss=[categorical_focal_loss(alpha=.25, gamma=2)], \
+                   metrics=["accuracy"], optimizer=ad)
+
+
+epoch_nb = 10
+
+history = sslamm_clf.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
+                    steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
+                    epochs = epoch_nb, callbacks = [ENN_check, es], class_weight = w,\
+                        shuffle=True) # weights ?
+
+sslamm_clf.load_weights('tmp/weights_sslamm_focal.hdf5')
+
 
 # Compute test accuracy
 start = time()
-preds = np.argmax(cffnn.predict(X_test), axis = 1)
+preds = np.argmax(sslamm_clf.predict(X_test), axis = 1)
 end = time()
 print(end - start)
 true = np.argmax(y_test, axis = 1)
@@ -428,9 +383,213 @@ true = np.argmax(y_test, axis = 1)
 acc = np.mean(preds == true)
 print('Accuracy on test data !', acc)
 print('Macro accuracy is', precision_score(true, preds, average='macro'))
-print(confusion_matrix(true, preds))
-#print('categorical ce is ', - np.sum(true * np.log(preds)))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
     
 
-# Good model : Save model
-cffnn.save('ENN_LottyNet_FUMSECK')
+X = pd.DataFrame(trapz(X_test, axis = 1), \
+                         columns = ['SWS','Total FWS', 'FL Orange', 'Total FLR', 'Curvature'])
+y = y_test.argmax(1)
+plot_2Dcyto(X,y , tn, 'Total FWS', 'Total FLR', colors = None)
+
+sslamm_clf.save('LottyNet_SSLAMM_focal')
+
+
+##############################################################################################
+############################### Try focal loss on few files ##################################
+##############################################################################################
+
+os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
+
+
+cluster_classes = ['airbubble', 'cryptophyte', 'hsnano', 'microphytoplancton',
+       'nanoeucaryote', 'picoeucaryote', 'prochlorococcus',
+       'synechococcus', 'unassigned particle']
+
+
+X_train = np.load('SSLAMM_L3/X_train_umbal_SLAMM')
+y_train = np.load('SSLAMM_L3/y_train_umbal_SLAMM')
+
+X_valid = np.load('SSLAMM_L3/X_valid_umbal_SLAMM')
+y_valid = np.load('SSLAMM_L3/y_valid_umbal_SLAMM')
+
+X_test = np.load('SSLAMM_L3/X_test_umbal_SLAMM')
+y_test = np.load('SSLAMM_L3/y_test_umbal_SLAMM')
+    
+    
+batch_size = 64
+STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
+STEP_SIZE_VALID = (len(X_valid) // 128) + 1 
+
+sslamm_clf = model13(X_train, y_train, dp = 0.2)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=4)
+ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm_focal_onefile.hdf5',\
+                            verbose = 1, save_best_only=True)
+
+
+ad = adam(lr=1e-2)
+sslamm_clf.compile(loss=[categorical_focal_loss(alpha=.25, gamma=2)], \
+                   metrics=["accuracy"], optimizer=ad)
+
+
+epoch_nb = 10
+
+history = sslamm_clf.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
+                    steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
+                    epochs = epoch_nb, callbacks = [ENN_check, es],
+                        shuffle=True)
+    
+sslamm_clf.load_weights('tmp/weights_sslamm_focal_onefile.hdf5')
+
+# Compute test accuracy
+preds = np.argmax(sslamm_clf.predict(X_test), axis = 1)
+true = np.argmax(y_test, axis = 1)
+
+acc = np.mean(preds == true)
+print('Accuracy on test data !', acc)
+print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
+    
+
+X = pd.DataFrame(trapz(X_test, axis = 1), \
+                         columns = ['SWS','Total FWS', 'FL Orange', 'Total FLR', 'Curvature'])
+y = y_test.argmax(1)
+plot_2Dcyto(X, preds , tn, 'Total FWS', 'Total FLR', colors = None)
+
+sslamm_clf.save('LottyNet_SSLAMM_focal_one_file')
+
+
+##############################################################################################
+############################## Try bal_focal_loss on few files ###############################
+##############################################################################################
+from losses import CB_loss
+
+os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
+
+tn = pd.read_csv('train_test_nomenclature_SSLAMM.csv')
+tn.columns = ['Particle_class', 'label']
+
+X_train = np.load('SSLAMM_L3/X_train_umbal_SLAMM.npy')
+y_train = np.load('SSLAMM_L3/y_train_umbal_SLAMM.npy')
+
+X_valid = np.load('SSLAMM_L3/X_valid_umbal_SLAMM.npy')
+y_valid = np.load('SSLAMM_L3/y_valid_umbal_SLAMM.npy')
+
+X_test = np.load('SSLAMM_L3/X_test_umbal_SLAMM.npy')
+y_test = np.load('SSLAMM_L3/y_test_umbal_SLAMM.npy')
+   
+    
+batch_size = 64
+STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
+STEP_SIZE_VALID = (len(X_valid) // 128) + 1 
+
+sslamm_clf = model13(X_train, y_train, dp = 0.2)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=4)
+ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm_baloss_onefile.hdf5',\
+                            verbose = 1, save_best_only=True)
+
+sample_per_class = np.sum(y_valid, axis = 0) # Weights computed on valid, risk of overfit ?
+sample_per_class = np.where(sample_per_class == 0, 1, sample_per_class)
+
+ad = adam(lr=1e-2)
+sslamm_clf.compile(loss=[CB_loss(sample_per_class)], \
+                   metrics=["accuracy"], optimizer=ad)
+
+
+epoch_nb = 10
+
+history = sslamm_clf.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
+                    steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
+                    epochs = epoch_nb, callbacks = [ENN_check, es],
+                        shuffle=True)
+    
+sslamm_clf.load_weights('tmp/weights_sslamm_baloss_onefile.hdf5')
+
+# Compute test accuracy
+preds = np.argmax(sslamm_clf.predict(X_test), axis = 1)
+true = np.argmax(y_test, axis = 1)
+
+acc = np.mean(preds == true)
+print('Accuracy on test data !', acc)
+print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
+print(precision_score(true, preds, average = None, labels = list(range(len(tn)))))   
+
+X = pd.DataFrame(trapz(X_test, axis = 1), \
+                         columns = ['SWS','Total FWS', 'FL Orange', 'Total FLR', 'Curvature'])
+y = y_test.argmax(1)
+y_train.argmax(0) + y_test.argmax(0) + y_valid.argmax(0)
+plot_2Dcyto(X, preds , tn, 'Total FWS', 'Total FLR', colors = None)
+
+sslamm_clf.save('LottyNet_SSLAMM_baloss_one_file')
+
+
+##############################################################################################
+############### Try bal_focal_loss on few (FUMSECK enriched) files ###########################
+##############################################################################################
+
+os.chdir('C:/Users/rfuchs/Documents/cyto_classif')
+
+    
+X_train = np.load('hybrid_L3/X_train.npy')
+y_train = np.load('hybrid_L3/y_train.npy')
+
+X_valid = np.load('hybrid_L3/X_valid.npy')
+y_valid = np.load('hybrid_L3/y_valid.npy')  
+
+X_test = np.load('hybrid_L3/X_test.npy')
+y_test = np.load('hybrid_L3/y_test.npy')  # Il y a un soucis il devrait y avoir 0 
+
+tn = pd.read_csv('train_test_nomenclature_SSLAMM.csv')
+tn.columns = ['Particle_class', 'label']
+    
+batch_size = 128
+STEP_SIZE_TRAIN = (len(X_train) // batch_size) + 1 
+STEP_SIZE_VALID = (len(X_valid) // 128) + 1 
+
+sslamm_clf = model13(X_train, y_train, dp = 0.2)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=4)
+ENN_check = ModelCheckpoint(filepath='tmp/weights_sslamm_baloss_enriched.hdf5',\
+                            verbose = 1, save_best_only=True)
+
+sample_per_class = np.sum(y_train, axis = 0) # Weights computed on valid, risk of overfit ?
+sample_per_class = np.where(sample_per_class == 0, 1, sample_per_class)
+
+ad = adam(lr=1e-2)
+sslamm_clf.compile(loss=[CB_loss(sample_per_class)], \
+                   metrics=["accuracy"], optimizer=ad)
+
+
+epoch_nb = 4
+
+history = sslamm_clf.fit(X_train, y_train, validation_data=(X_valid, y_valid), \
+                    steps_per_epoch = STEP_SIZE_TRAIN, validation_steps = STEP_SIZE_VALID,\
+                    epochs = epoch_nb, callbacks = [ENN_check, es],
+                        shuffle=True)
+    
+sslamm_clf.load_weights('tmp/weights_sslamm_baloss_enriched.hdf5')
+
+# Compute test accuracy
+preds = np.argmax(sslamm_clf.predict(X_test), axis = 1)
+true = np.argmax(y_test, axis = 1)
+
+
+acc = np.mean(preds == true)
+print('Accuracy on test data !', acc)
+print('Macro accuracy is', precision_score(true, preds, average='macro'))
+print(confusion_matrix(true, preds, labels = list(range(len(tn)))))
+print(precision_score(true, preds, average = None, labels = list(range(len(tn)))))   
+
+X = pd.DataFrame(trapz(X_test, axis = 1), \
+                         columns = ['SWS','Total FWS', 'FL Orange', 'Total FLR', 'Curvature'])
+y = y_test.argmax(1)
+
+len(y)
+plot_2Dcyto(X,  y, tn, 'Total FWS', 'Total FLR', colors = None)
+
+Counter(y)
+
+sslamm_clf.save('LottyNet_SSLAMM_baloss_enriched')
+
+
+Counter(y_train.argmax(1))
+Counter(preds)

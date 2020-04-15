@@ -9,24 +9,25 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import os 
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, precision_score
 
 os.chdir('C:/Users/rfuchs/Documents/GitHub/planktonPipeline/extract_Pulse_values')
 
-# Load nomenclature
-tn = pd.read_csv('train_test_nomenclature.csv')
-tn.columns = ['Particle_class', 'label']
+
 
 
 ###################################################################################################################
 # Visualize the predictions made on FUMSECK
 ###################################################################################################################
 
+# Load nomenclature
+tn = pd.read_csv('train_test_nomenclature_FUMSECK.csv')
+tn.columns = ['Particle_class', 'label']
+
 from pred_functions import predict
 from viz_functions import plot_2D
 
 from keras.models import load_model
-from time import time
 
 
 folder = 'C:/Users/rfuchs/Documents/cyto_classif'
@@ -174,8 +175,9 @@ len(y_label)
 #############################################################################################
 # Undersampling a random acquisition
 #############################################################################################
+
 import fastparquet as fp
-from dataset_prepocessing import homogeneous_cluster_names, interp_sequences
+from dataset_preprocessing import homogeneous_cluster_names, interp_sequences
 
 folder = 'C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L2_fp'
 
@@ -209,7 +211,7 @@ Counter(y_true)
 
 
 #############################################################################################
-# Plot the training set : Endoume 
+# Plot the training set : Endoume  (FLR 6 only)
 #############################################################################################
 
 from scipy.integrate import trapz
@@ -241,40 +243,6 @@ q1 = 'FWS'
 q2 = 'FL Red'
 
 plot_2Dcyto(X_trapz, y_label, tn, q1, q2)
-
-
-
-
-#############################################################################################
-# Benchmarking CNN with kNN
-#############################################################################################
-# Cannot run like this !
-
-folder = 'C:/Users/rfuchs/Documents/cyto_classif/FUMSECK_L2_fp'
-
-pfile = fp.ParquetFile(folder + '/' + 'Labelled_Pulse6_2019-05-05 06h09.parq')
-true = pfile.to_pandas()
-
-true = homogeneous_cluster_names(true)
-true = true.set_index('Particle ID')
-grouped_df = true[['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature']].groupby('Particle ID')
-
-obs_list = [obs.values.T for pid, obs in grouped_df]
-obs_list = interp_sequences(obs_list, 120)
-X_true = trapz(obs_list, axis = 2)
-X_true = pd.DataFrame(X_true, columns = ['SWS','FWS', 'FL Orange', 'FL Red', 'Curvature'])
-
-y_true = true.groupby('Particle ID')['cluster'].apply(np.unique)
-y_true = np.stack(y_true)[:,0]
-y_enc = np.array([list(tn[tn['Particle_class'] == yi]['label'])[0] for yi in y_true])
-
-y_knn = knn.predict(X_true) # Use prefitted knn
-
-np.mean(y_knn == y_enc)
-
-
-plot_2Dcyto(X_true, y_knn, tn, q1, q2, colors)
-
 
 ###################################################################################################################
 # Randomly pick some Endoume predictions and plot true vs pred 
@@ -383,3 +351,72 @@ for cluster_name in ts.columns:
         print(cluster_name, 'is not in true_ts pred')
 
 ts['microphytoplancton'].plot()
+
+
+###################################################################################################################
+# Visualize the predictions made on SSLAMM (trained with SSLAMM data)
+###################################################################################################################
+from pred_functions import predict
+from viz_functions import plot_2D
+
+from keras.models import load_model
+
+acq_name = 'Pulse6_2019-10-01 15h59'
+
+folder = 'C:/Users/rfuchs/Documents/cyto_classif'
+file = 'SSLAMM_L2/Labelled_' + acq_name + '.parq'
+
+
+date_regex = "(Pulse[0-9]{1,2}_20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}(?:u|h)[0-9]{2})"
+pred_file = acq_name + '.csv'
+os.chdir(folder)
+
+tn = pd.read_csv('train_test_nomenclature_SSLAMM.csv')
+tn.columns = ['Particle_class', 'label']
+
+# Load pre-trained model
+LottyNet = load_model('C:/Users/rfuchs/Documents/cyto_classif/LottyNet_SSLAMM') 
+
+# Making formated predictions 
+source_path = folder + '/' + file
+dest_folder = folder
+predict(source_path, folder, LottyNet, tn)
+
+# Getting those predictions
+preds = pd.read_csv(folder + '/' + pred_file)
+
+np.mean(preds['True FFT id'] == preds['Pred FFT id'])
+print(confusion_matrix(preds['True FFT id'] , preds['Pred FFT id']))
+print('Macro accuracy is', precision_score(preds['True FFT id'], preds['Pred FFT id'], average='macro'))
+
+colors = ['#96ceb4', '#ffeead', '#ffcc5c', '#ff6f69', '#588c7e', '#f2e394', '#f2ae72', '#d96459']
+
+#####################
+# 2D plots
+#####################
+
+plot_2D(preds, tn, 'Total FLR', 'Total FLO', loc = 'upper left') # FLO vs FLR
+plot_2D(preds, tn, 'Total FWS', 'Total FLR', loc = 'upper left')
+plot_2D(preds, tn, 'Total SWS', 'Total FLR', loc = 'upper left')
+plot_2D(preds, tn, 'Total SWS', 'Total FWS', loc = 'upper left')
+
+
+#===========================================
+# Viz one of the SSLAMM files
+#============================================
+
+cluster_classes = ['airbubble', 'cryptophyte', 'hsnano', 'microphytoplancton',
+       'nanoeucaryote', 'picoeucaryote', 'prochlorococcus',
+       'synechococcus', 'unassigned particle']
+
+source = 'C:/Users/rfuchs/Documents/cyto_classif/SSLAMM_L2'
+
+# Extract the test dataset from full files
+X_test_SLAAMM, seq_len_list_test_SLAAMM, y_test_SLAAMM, pid_list_test_SLAAMM, file_name_test_SLAAMM, le_test = gen_dataset(source, \
+                            cluster_classes, [], None, nb_obs_to_extract_per_group = 100, \
+                            to_balance = False, to_undersample = False, seed = None)
+
+X = pd.DataFrame(trapz(X_test_SLAAMM, axis = 1), \
+                         columns = ['SWS','Total FWS', 'FL Orange', 'Total FLR', 'Curvature'])
+y = y_test_SLAAMM.argmax(1)
+plot_2Dcyto(X,y , tn, 'Total FWS', 'Total FLR', colors = None)

@@ -41,14 +41,14 @@ def data():
     tn = pd.read_csv('train_test_nomenclature.csv')
     tn.columns = ['Particle_class', 'label']
     
-    X_train = np.load('data/X_train610.npy')
-    y_train = np.load('data/y_train610.npy')
+    X_train = np.load('SSLAMM_L3/X_train.npy')
+    y_train = np.load('SSLAMM_L3/y_train.npy')
 
-    X_valid = np.load('data/X_valid610.npy')
-    y_valid = np.load('data/y_valid610.npy') 
+    X_valid = np.load('SSLAMM_L3/X_valid.npy')
+    y_valid = np.load('SSLAMM_L3/y_valid.npy') 
 
-    X_test = np.load('data/X_test610.npy')
-    y_test = np.load('data/y_test610.npy')    
+    X_test = np.load('SSLAMM_L3/X_test.npy')
+    y_test = np.load('SSLAMM_L3/y_test.npy')    
             
     return X_train, y_train, X_valid, y_valid, X_test, y_test
 

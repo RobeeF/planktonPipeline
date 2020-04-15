@@ -12,17 +12,16 @@ from sklearn.preprocessing import MinMaxScaler
 from copy import deepcopy
 
 
-def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, prop = [0.80, 0.1, 0.1], seed = None):
+def gen_train_test_valid(source, cluster_classes, nb_files_tvt = [5, 4, 1], train_umbal_margin = 100, seed = None):
     ''' Generate a train balanced dataset and a test set with all observations 
     source (str): The location of extracted (and formatted) Pulse files on disk
     cluster_classes (list of str): The classes used in the prediction task
-    max_nb_files_extract (int): Number of file to extract data from in source (this number is then splitted between train/test/valid according to prop)
-    prop (list of float): the proportion of train/valid/test files
+    nb_files_tvt (list of int): the number of files used to generate respectively the train/valid/test sets
     seed (all type): The seed to use to generate random samples    
     ------------------------------------------------------------------------------------
     '''
 
-    assert (np.array(prop) != 0).all()
+    assert (np.array(nb_files_tvt) != 0).all()
     # Set the seed for train/test sets splitting
     np.random.seed(seed)
     
@@ -38,17 +37,14 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
         # Fetching the formatted files    
         files = os.listdir(source)
         files = [f for f in files if re.search("Labelled",f) and not(re.search('lock', f))]
+        
         np.random.shuffle(files) 
-        files = files[:max_nb_files_extract] # If one does not want to extract all the files
 
         # Assigning them between train, valid and test  
-        bounds = (np.array(prop) * len(files)).astype(int) # Determine file repartitions
-        bounds[0] += len(files) - bounds.sum() # Deal with rounding isssues
-        bounds = np.cumsum(bounds)
-        bounds = np.insert(bounds, 0, [0])
+        bounds = np.concatenate([[0], np.cumsum(nb_files_tvt)])
         
         train_files, valid_files, test_files = [files[bounds[i]:bounds[i + 1]] for i in range(3)]
-
+  
         # Check that all classes are present in the validation set
         valid_classes = []
         for vfile in valid_files:
@@ -61,6 +57,7 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
         
         if (len(valid_classes) == len(cluster_classes)):
             not_all_classes_in_valid = False
+            
 
         # Check that the set files contains at least one FLR6 file which are more diversified than FLR25 files
         for tfile in test_files:
@@ -71,20 +68,20 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
     # Extract a balanced trained_dataset
     print('Generating train set')
     X_train, seq_len_list_train, y_train, pid_list_train, file_name_train, le_train = gen_dataset(source, \
-                                cluster_classes, train_files, le, nb_obs_to_extract_per_group = 100, \
+                                cluster_classes, train_files, le, nb_obs_to_extract_per_group = train_umbal_margin, \
                                  to_balance = True, seed = None)
 
 
     # Extract the valid dataset from full files
     print('Generating valid set')
     X_valid, seq_len_list_valid, y_valid, pid_list_valid, file_name_valid, le_valid = gen_dataset(source, \
-                                cluster_classes, valid_files, le, nb_obs_to_extract_per_group = 600, default_sampling_nb = 70,\
+                                cluster_classes, valid_files, le, nb_obs_to_extract_per_group = 600, \
                                 to_balance = False, to_undersample = True, seed = None)
     
     # Extract the test dataset from full files
     print('Generating test set')
     X_test, seq_len_list_test, y_test, pid_list_test, file_name_test, le_test = gen_dataset(source, \
-                                cluster_classes, test_files, le, nb_obs_to_extract_per_group = 100, \
+                                cluster_classes, test_files, le, nb_obs_to_extract_per_group = None, \
                                 to_balance = False, to_undersample = False, seed = None)
         
     
@@ -104,7 +101,7 @@ def gen_train_test_valid(source, cluster_classes, max_nb_files_extract = 610, pr
     return X_train, y_train, X_valid, y_valid, X_test, y_test
     
 
-def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extract_per_group = 100, default_sampling_nb = 40,\
+def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extract_per_group = 100, \
                        to_balance = True, to_undersample = False, seed = None):
     ''' Generate a balanced dataset from the cleaned Pulse files 
     source (str): The location of extracted (and formatted) Pulse files on disk
@@ -112,7 +109,6 @@ def gen_dataset(source, cluster_classes, files = [], le = None, nb_obs_to_extrac
     files (list of str): If None extract the observations from all files of source, if list of str extract only from the names specified
     le (LabelEncoder object): None if no label encoder is provided.
     nb_obs_to_extract_per_group: Number of cells to extract for each group in each file 
-    default_sampling_nb (int): The minimum number of cells to extract from each file (used only if to balance is True)
     seed (all type): The seed to use to generate random samples
     ------------------------------------------------------------------------------
     return (4 arrays): The dataset (X, y) the particle ids (pid) and the encoder of the groups names    
@@ -201,13 +197,12 @@ def interp_sequences(sequences, max_len):
     return np.stack(interp_obs) 
 
 
-def data_preprocessing(df, balancing_dict = None, default_sampling_nb = 40, max_len = None,  \
+def data_preprocessing(df, balancing_dict = None, max_len = None,  \
                            to_balance = True, to_undersample = False, seed = None):
     ''' Interpolates Pulse sequences and rebalance the dataset 
     df (pandas DataFrame): The data container
     balancing_dict (dict): A dict that contains the desired quantities to extract for each group in order to obtain a balanced dataset. Only used if to_balance is True
     maxlen (int): The maximum length of the sequence: All sequences will be interpolated to match this length
-    default_sampling_nb (int): The minimum number of cells to extract from each file
     to_balance (Bool): Whether to balance or not the dataset
     to_undersample (Bool): Whether to undersample the data even if it is not to obtain a balanced data_set. Used only if to_balance == False
     seed (int): The seed to use to fix random results if wanted
@@ -227,11 +222,7 @@ def data_preprocessing(df, balancing_dict = None, default_sampling_nb = 40, max_
     if to_balance:
         # Deleting non existing keys and adapting to the data in place
         balancing_dict  = {k: min(balancing_dict[k], clus_value_count[k]) for k in clus_value_count.keys()}
-                
-        # If the group that have less observations is not represented in this dataset: sample DEFAULT_SAMPLING_NB observations of the other groups
-        if np.sum(list(balancing_dict.values())) == 0:
-            balancing_dict = {k: min(default_sampling_nb, clus_value_count[k]) for k in clus_value_count.keys()}
-                
+                                
         # Undersampling to get a balanced dataset
         rus = RandomUnderSampler(random_state = seed, sampling_strategy = balancing_dict)
             
